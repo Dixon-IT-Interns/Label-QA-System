@@ -2,6 +2,7 @@ import logging
 import math
 import re
 import time
+from urllib.parse import unquote
 
 import cv2
 import numpy as np
@@ -43,6 +44,7 @@ class OCRService:
         configured_fields: list[ConfiguredField] | None = None,
         minimum_confidence: float | None = None,
         original_extension: str = ".img",
+        label_type: str | None = None,
     ) -> OCRResponse:
         started = time.perf_counter()
         logger.info("OCR image received; byte_count=%d", len(image_bytes))
@@ -66,15 +68,33 @@ class OCRService:
                 "Blue annotation-like pixels were masked from OCR preprocessing; the original image was preserved."
             )
         active_fields = configured_fields or []
-        is_config_pair = _is_config_field_pair(active_fields)
+        normalized_label_type = (label_type or "").strip().casefold()
+        if normalized_label_type and normalized_label_type not in {"co", "config"}:
+            raise ValueError("label_type must be either 'CO' or 'CONFIG'.")
+        is_co_label = (
+            normalized_label_type == "co"
+            if normalized_label_type
+            else _is_co_field_set(active_fields)
+        )
+        has_config_pair = _is_config_field_pair(active_fields)
+        if is_co_label and has_config_pair:
+            raise ValueError("A label cannot be configured as both CO and CONFIG.")
+        is_config_pair = has_config_pair and not is_co_label
+        if is_co_label:
+            active_fields = _select_co_fields(active_fields)
         rectification: dict[str, object] | None = None
-        if is_config_pair:
+        if is_config_pair or is_co_label:
             processing_image, rectification = prepare_config_label(image_bytes, image)
             cleaned_image = remove_blue_annotation_pixels(processing_image)
         else:
             cleaned_image = prepare_for_ocr(image, quality, OCR_PREPROCESSING)
         logger.info("Image preprocessing completed")
-        if is_config_pair:
+        if is_co_label:
+            logger.info("Targeted CO OCR started; engine=%s", self._provider.name)
+            field_candidates, engine_version = self._extract_co_fields(cleaned_image, active_fields)
+            lines = []
+            raw_text = ""
+        elif is_config_pair:
             active_fields = [
                 field for field in active_fields
                 if _normalized_field_name(field.field_name) in {"modelno", "queueno"}
@@ -96,7 +116,7 @@ class OCRService:
         readable_lines = [line for line in lines if line.text.strip()]
         ocr_confidence = (
             sum(candidate.confidence for candidate in field_candidates) / len(field_candidates)
-            if is_config_pair and field_candidates
+            if (is_config_pair or is_co_label) and field_candidates
             else sum(line.confidence for line in readable_lines) / len(readable_lines)
             if readable_lines
             else 0
@@ -114,13 +134,32 @@ class OCRService:
             else confidence_threshold
             for field in active_fields
         }
+        if is_co_label:
+            field_candidates = [
+                candidate.model_copy(update={
+                    "value": None,
+                    "box": None,
+                    "status": "NOT_FOUND",
+                    "reason": (
+                        f"{candidate.reason} The detected value is below the configured "
+                        "field confidence threshold."
+                    ),
+                })
+                if candidate.status == "DETECTED"
+                and candidate.confidence < thresholds.get(candidate.field_name, confidence_threshold)
+                else candidate
+                for candidate in field_candidates
+            ]
         requires_review = (
             any(
                 candidate.status != "DETECTED"
                 or candidate.confidence < thresholds.get(candidate.field_name, confidence_threshold)
                 for candidate in field_candidates
             )
-            if is_config_pair
+            or quality.blur_score < MIN_BLUR_SCORE
+            or quality.brightness_mean < 25
+            or quality.contrast_stddev < 12
+            if is_config_pair or is_co_label
             else (
                 not readable_lines
                 or quality.blur_score < MIN_BLUR_SCORE
@@ -129,12 +168,12 @@ class OCRService:
             )
         )
         logger.info("Configured field extraction started; field_count=%d", len(active_fields))
-        if not is_config_pair:
+        if not is_config_pair and not is_co_label:
             field_candidates = match_configured_fields(active_fields, readable_lines)
         candidates_by_name = {candidate.field_name: candidate for candidate in field_candidates}
         retry_fields = [
             field for field in active_fields
-            if not is_config_pair
+            if not is_config_pair and not is_co_label
             and (
                 (candidate := candidates_by_name[field.field_name]).status == "NOT_FOUND"
                 or candidate.status == "DETECTED"
@@ -218,6 +257,52 @@ class OCRService:
             response.job_id,
         )
         return response
+
+    def _extract_co_fields(
+        self,
+        image: np.ndarray,
+        fields: list[ConfiguredField],
+    ) -> tuple[list[FieldCandidate], str]:
+        candidates_by_kind: dict[str, FieldCandidate] = {}
+        engine_versions: list[str] = []
+        height, width = image.shape[:2]
+        model_field = next(field for field in fields if _normalized_field_name(field.field_name) == "modelno")
+        model_left = int(width * 0.04)
+        model_top = int(height * 0.10)
+        model_right = max(model_left + 1, int(width * 0.55))
+        model_bottom = max(model_top + 1, int(height * 0.22))
+        model_roi = image[model_top:model_bottom, model_left:model_right]
+        model, _, _, model_version = _extract_model_number(
+            model_field,
+            model_roi,
+            self._provider,
+            model_left,
+            model_top,
+        )
+        candidates_by_kind["modelno"] = model.model_copy(update={"debug": None})
+        engine_versions.append(model_version)
+
+        qr_field = next(field for field in fields if _normalized_field_name(field.field_name) == "qrcode")
+        qr_candidate = _extract_co_qr(qr_field, image)
+        candidates_by_kind["qrcode"] = qr_candidate
+
+        for field in fields:
+            kind = _normalized_field_name(field.field_name)
+            if kind in {"serialnumber", "partnumber"}:
+                candidate, versions = _extract_co_labeled_value(
+                    field,
+                    image,
+                    self._provider,
+                    kind,
+                    qr_candidate.value if qr_candidate.status == "DETECTED" else None,
+                )
+                candidates_by_kind[kind] = candidate
+                engine_versions.extend(versions)
+
+        return (
+            [candidates_by_kind[_normalized_field_name(field.field_name)] for field in fields],
+            ", ".join(dict.fromkeys(version for version in engine_versions if version)),
+        )
 
     def _extract_config_fields(
         self,
@@ -402,6 +487,221 @@ def _is_config_field_pair(fields: list[ConfiguredField]) -> bool:
     return {"modelno", "queueno"}.issubset(names)
 
 
+def _is_co_field_set(fields: list[ConfiguredField]) -> bool:
+    names = {_normalized_field_name(field.field_name) for field in fields}
+    return {"serialnumber", "partnumber", "modelno", "qrcode"}.issubset(names)
+
+
+def _select_co_fields(fields: list[ConfiguredField]) -> list[ConfiguredField]:
+    required = ("serialnumber", "partnumber", "modelno", "qrcode")
+    by_name: dict[str, ConfiguredField] = {}
+    for field in fields:
+        kind = _normalized_field_name(field.field_name)
+        if kind in required:
+            if kind in by_name:
+                raise ValueError(f"CO field_config contains duplicate {field.field_name} fields.")
+            by_name[kind] = field
+    if any(name not in by_name for name in required):
+        raise ValueError("CO field_config must contain one each of SERIAL_NUMBER, PART_NUMBER, MODEL_NO, and QR_CODE.")
+    return [by_name[name] for name in required]
+
+
+def _extract_co_labeled_value(
+    field: ConfiguredField,
+    image: np.ndarray,
+    provider: OCRProvider,
+    kind: str,
+    qr_payload: str | None = None,
+) -> tuple[FieldCandidate, list[str]]:
+    height, width = image.shape[:2]
+    top_ratio, bottom_ratio = (0.23, 0.31) if kind == "serialnumber" else (0.29, 0.39)
+    top_limit = int(height * top_ratio)
+    bottom_limit = int(height * bottom_ratio)
+    band_height = max(48, int(height * (0.05 if kind == "serialnumber" else 0.055)))
+    step = max(16, int(height * 0.0125))
+    left = int(width * 0.05)
+    right = max(left + 1, int(width * 0.62))
+    label = (
+        re.compile(
+            r"(?<![A-Z0-9])S\s*/\s*N(?![A-Z0-9])[\s|_:=\-]{0,8}(?P<value>[A-Z0-9]{8,20})(?![A-Z0-9])",
+            re.IGNORECASE,
+        )
+        if kind == "serialnumber"
+        else re.compile(
+            r"(?<![A-Z0-9])P\s*/\s*N(?![A-Z0-9])\s*[:=]?\s*(?P<value>[A-Z0-9#)\]]{7,18})",
+            re.IGNORECASE,
+        )
+    )
+    observed: dict[str, list[tuple[str, float, list[list[float]]]]] = {}
+    versions: list[str] = []
+    part_number = _part_number_from_qr_payload(qr_payload) if kind == "partnumber" else None
+    for top in range(top_limit, max(top_limit + 1, bottom_limit - band_height + 1), step):
+        bottom = min(bottom_limit, top + band_height)
+        region = image[top:bottom, left:right]
+        gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY) if region.ndim == 3 else region.copy()
+        enlarged = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+        enhanced = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8)).apply(enlarged)
+        variants = (enlarged, enhanced, cv2.threshold(
+            enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )[1])
+        for processed in variants:
+            result = provider.extract(processed)
+            if result.version:
+                versions.append(result.version)
+            for line in result.lines:
+                match = label.search(line.text)
+                if match is None:
+                    continue
+                value = re.sub(r"\s+", "", match.group("value")).strip()
+                if kind == "serialnumber":
+                    if not re.fullmatch(r"[A-Z0-9]{8,20}", value, re.IGNORECASE):
+                        continue
+                else:
+                    if not re.fullmatch(r"[A-Z0-9]{5,12}#[A-Z0-9]{2,6}", value, re.IGNORECASE):
+                        if not part_number or not _matches_qr_confirmed_part_number(value, part_number):
+                            continue
+                    if part_number:
+                        if not _matches_qr_confirmed_part_number(value, part_number):
+                            continue
+                        value = part_number
+                    elif not re.fullmatch(r"[A-Z0-9]{5,12}#[A-Z0-9]{2,6}", value, re.IGNORECASE):
+                        continue
+                confidence = line.confidence
+                box = [
+                    [float(left), float(top)],
+                    [float(right), float(top)],
+                    [float(right), float(bottom)],
+                    [float(left), float(bottom)],
+                ]
+                observed.setdefault(value.casefold(), []).append((value, confidence, box))
+
+    field_label = "S/N" if kind == "serialnumber" else "P/N"
+    ranked = sorted(observed.values(), key=lambda detections: max(item[1] for item in detections), reverse=True)
+    if ranked and (
+        len(ranked) == 1
+        or max(item[1] for item in ranked[0]) >= 0.55
+        and max(item[1] for item in ranked[0]) - max(item[1] for item in ranked[1]) >= 0.12
+    ):
+        detections = ranked[0]
+        value, _, box = max(detections, key=lambda detection: detection[1])
+        confidence = max(item[1] for item in detections)
+        return FieldCandidate(
+            field_name=field.field_name,
+            value=value,
+            confidence=confidence,
+            box=box,
+            status="DETECTED" if confidence > 0 else "NOT_FOUND",
+            reason=(
+                f"The value beside the {field_label} label was cross-checked against the decoded QR payload."
+                if kind == "partnumber" and part_number
+                else f"A field-valid value was read beside the {field_label} label in its dedicated region."
+            ),
+        ), versions
+    if len(ranked) > 1:
+        return FieldCandidate(
+            field_name=field.field_name,
+            confidence=0,
+            status="AMBIGUOUS",
+            reason=f"Multiple distinct field-valid values were read beside the {field_label} label.",
+        ), versions
+    return FieldCandidate(
+        field_name=field.field_name,
+        confidence=0,
+        status="NOT_FOUND",
+        reason=f"No field-valid value was read beside the {field_label} label in its dedicated region.",
+    ), versions
+
+
+def _extract_co_qr(field: ConfiguredField, image: np.ndarray) -> FieldCandidate:
+    detector = cv2.QRCodeDetector()
+    decoded_values: list[tuple[str, list[list[float]] | None]] = []
+    height, width = image.shape[:2]
+    left = int(width * 0.42)
+    top = 0
+    right = width
+    bottom = int(height * 0.30)
+    region = image[top:bottom, left:right]
+    for rotation in range(4):
+        rotated = np.rot90(region, rotation).copy() if rotation else region
+        decoded, points, _ = detector.detectAndDecode(rotated)
+        if decoded:
+            box = None
+            if points is not None:
+                coordinates = points.reshape(-1, 2)
+                if rotation == 0:
+                    box = [[float(x + left), float(y + top)] for x, y in coordinates]
+            decoded_values.append((decoded, box))
+        multiple, values, boxes, _ = detector.detectAndDecodeMulti(rotated)
+        if multiple:
+            for value, points in zip(values, boxes, strict=True):
+                if value:
+                    box = None
+                    if rotation == 0:
+                        box = [[float(point[0] + left), float(point[1] + top)] for point in points]
+                    decoded_values.append((value, box))
+        if decoded_values:
+            break
+
+    values = {value for value, _ in decoded_values}
+    if len(values) == 1:
+        value = next(iter(values))
+        _, box = next(item for item in decoded_values if item[0] == value)
+        return FieldCandidate(
+            field_name=field.field_name,
+            value=value,
+            confidence=1,
+            box=box,
+            status="DETECTED",
+            reason="The QR payload was decoded by the QR-code decoder.",
+        )
+    if len(values) > 1:
+        return FieldCandidate(
+            field_name=field.field_name,
+            confidence=0,
+            status="AMBIGUOUS",
+            reason="Multiple distinct QR payloads were decoded.",
+        )
+    return FieldCandidate(
+        field_name=field.field_name,
+        confidence=0,
+        status="NOT_FOUND",
+        reason="No QR payload could be decoded.",
+    )
+
+
+def _part_number_from_qr_payload(payload: str | None) -> str | None:
+    if not payload:
+        return None
+    match = re.search(r"(?:[?&])240=([^&#\s]+)", payload, re.IGNORECASE)
+    if match is None:
+        return None
+    part_number = unquote(match.group(1)).upper()
+    return part_number if re.fullmatch(r"[A-Z0-9]{5,12}#[A-Z0-9]{2,6}", part_number) else None
+
+
+def _matches_qr_confirmed_part_number(candidate: str, part_number: str) -> bool:
+    if len(candidate) != len(part_number):
+        return False
+    confusions = {
+        frozenset(("S", "5")),
+        frozenset(("O", "0")),
+        frozenset(("I", "1")),
+        frozenset(("B", "8")),
+        frozenset(("H", "#")),
+        frozenset((")", "J")),
+        frozenset(("]", "J")),
+    }
+    differences = [
+        (observed, expected)
+        for observed, expected in zip(candidate.upper(), part_number, strict=True)
+        if observed != expected
+    ]
+    return len(differences) <= 3 and all(
+        frozenset((observed, expected)) in confusions
+        for observed, expected in differences
+    )
+
+
 def _offset_lines(lines: list[OCRLine], x_offset: int, y_offset: int) -> list[OCRLine]:
     return [
         OCRLine(
@@ -519,17 +819,40 @@ def _extract_model_number(
                 y_offset,
             )
             lines.extend(unscaled_lines)
-            for line in result.lines:
-                text = line.text.translate({
+            normalized_lines = [
+                line.text.translate({
                     ord("—"): "-",
                     ord("–"): "-",
                     ord("−"): "-",
                     ord("‑"): "-",
                     ord("‐"): "-",
                 }).replace("\ufffd", "")
+                for line in result.lines
+            ]
+            for line_index, line in enumerate(result.lines):
+                text = normalized_lines[line_index]
                 if not re.search(r"\b\d{2}-[A-Z]{2}\d{4,}[A-Z0-9]{0,8}\b", text, re.IGNORECASE):
                     continue
-                value = re.sub(r"\s+", " ", text.strip()).strip(" |:;")
+                if re.search(r"\bHP\s+Laptop\b", text, re.IGNORECASE):
+                    combined_text = text
+                else:
+                    prefix = next(
+                        (
+                            normalized_lines[index]
+                            for index in range(line_index - 1, -1, -1)
+                            if re.search(r"\bHP\s+Laptop\b", normalized_lines[index], re.IGNORECASE)
+                        ),
+                        "",
+                    )
+                    combined_text = f"{prefix} {text}" if prefix else text
+                model_match = re.search(
+                    r"\bHP\s+Laptop\s+\d{2}-[A-Z]{2}\d{4,}[A-Z0-9]{0,8}\b",
+                    combined_text,
+                    re.IGNORECASE,
+                )
+                if not model_match:
+                    continue
+                value = re.sub(r"\s+", " ", model_match.group(0).strip())
                 key = re.sub(r"\s+", " ", value).casefold()
                 entry = collected.setdefault(
                     key,

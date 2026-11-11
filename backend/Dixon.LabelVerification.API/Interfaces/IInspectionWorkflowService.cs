@@ -9,11 +9,4 @@ public interface IInspectionWorkflowService
         InspectionStatus? coStage,
         InspectionStatus? configStage,
         InspectionStatus? serialStage);
-
-    InspectionWorkflowAssessment EvaluateFinalStatus(
-        InspectionStatus? coStage,
-        InspectionStatus? configStage,
-        FieldObservation? actualCoSerial,
-        FieldObservation? actualConfigSerial,
-        double serialMinimumConfidence);
 }

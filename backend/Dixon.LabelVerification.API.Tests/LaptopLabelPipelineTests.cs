@@ -216,11 +216,140 @@ public sealed class LaptopLabelPipelineTests
         Assert.Contains("QUEUE_NO", exception.Message);
     }
 
+    [Fact]
+    public void CoSelectorReturnsOnlyTheFourRequiredLabelFields()
+    {
+        var fields = new[]
+        {
+            CreateField("SERIAL_NUMBER", "S/N"),
+            CreateField("PART_NUMBER", "P/N"),
+            CreateField("MODEL_NO", "Model No."),
+            CreateField("QR_CODE", "QR Code"),
+            CreateField("PROCESSOR", "Processor"),
+            CreateField("WORK_ORDER", "Work Order")
+        };
+
+        var selected = CoComparisonFieldSelector.Select(fields);
+
+        Assert.Equal(
+            ["SERIAL_NUMBER", "PART_NUMBER", "MODEL_NO", "QR_CODE"],
+            selected.Select(field => field.FieldName));
+    }
+
+    [Fact]
+    public void CoSelectorRequiresAllFourFieldsAndIdentifierComparisonPreservesExactEvidence()
+    {
+        var exception = Assert.Throws<InspectionProcessingException>(() =>
+            CoComparisonFieldSelector.Select([
+                CreateField("SERIAL_NUMBER", "S/N"),
+                CreateField("PART_NUMBER", "P/N"),
+                CreateField("MODEL_NO", "Model No.")
+            ]));
+
+        Assert.Contains("QR_CODE", exception.Message);
+        var partNumber = CreateField("PART_NUMBER", "P/N");
+        partNumber.ComparisonStrategy = FieldComparisonStrategy.Exact;
+        var result = _comparisonService.Compare(
+            partNumber,
+            new FieldObservation { Value = "E52PWPA#ACJ", Confidence = 0.95 },
+            new FieldObservation { Value = "E52PWPA#0CJ", Confidence = 0.95 });
+
+        Assert.Equal(InspectionStatus.FAIL, result.Status);
+    }
+
+    [Fact]
+    public void CrossLabelValidationComparesOnlyModelAndPartNumberToQueueNumber()
+    {
+        var coFields = new[]
+        {
+            CreateField("SERIAL_NUMBER", "S/N"),
+            CreateField("PART_NUMBER", "P/N"),
+            CreateField("MODEL_NO", "Model No."),
+            CreateField("QR_CODE", "QR Code")
+        };
+        var configFields = new[]
+        {
+            CreateField("MODEL_NO", "Model No."),
+            CreateField("QUEUE_NO", "Queue No.")
+        };
+        configFields[0].ComparisonStrategy = FieldComparisonStrategy.CaseInsensitive;
+        configFields[1].ComparisonStrategy = FieldComparisonStrategy.CaseInsensitive;
+        var coActual = new Dictionary<Guid, ConfiguredFieldExtraction>
+        {
+            [coFields[2].Id] = Extraction("HP Laptop 15-fd1652TU"),
+            [coFields[1].Id] = Extraction("E52PWPA#ACJ")
+        };
+        var configActual = new Dictionary<Guid, ConfiguredFieldExtraction>
+        {
+            [configFields[0].Id] = Extraction("hp laptop 15-fd1652tu"),
+            [configFields[1].Id] = Extraction("e52pwpa # acj")
+        };
+
+        var stage = CoConfigValidationService.Create(
+            Guid.NewGuid(), coFields, configFields, coActual, configActual,
+            DateTimeOffset.UtcNow, true, _comparisonService);
+
+        Assert.Equal(InspectionStatus.PASS, stage.Status);
+        Assert.Equal(2, stage.TotalFields);
+        Assert.Equal(["MODEL_NO", "PART_NUMBER_TO_QUEUE_NO"],
+            stage.FieldComparisons.Select(comparison => comparison.FieldKey));
+        Assert.All(stage.FieldComparisons, comparison => Assert.Equal(InspectionStatus.PASS, comparison.Status));
+        var partQueueComparison = stage.FieldComparisons.Single(comparison =>
+            comparison.FieldKey == "PART_NUMBER_TO_QUEUE_NO");
+        Assert.Equal("E52PWPA#ACJ", partQueueComparison.MasterValue);
+        Assert.Equal("e52pwpa # acj", partQueueComparison.ActualValue);
+    }
+
+    [Fact]
+    public void CrossLabelValidationFailsMismatchesAndReviewsMissingRequiredValues()
+    {
+        var coFields = new[]
+        {
+            CreateField("SERIAL_NUMBER", "S/N"),
+            CreateField("PART_NUMBER", "P/N"),
+            CreateField("MODEL_NO", "Model No."),
+            CreateField("QR_CODE", "QR Code")
+        };
+        var configFields = new[]
+        {
+            CreateField("MODEL_NO", "Model No."),
+            CreateField("QUEUE_NO", "Queue No.")
+        };
+        var coActual = new Dictionary<Guid, ConfiguredFieldExtraction>
+        {
+            [coFields[2].Id] = Extraction("HP Laptop 15-fd1652TU"),
+            [coFields[1].Id] = Extraction("E52PWPA#ACJ")
+        };
+        var configActual = new Dictionary<Guid, ConfiguredFieldExtraction>
+        {
+            [configFields[0].Id] = Extraction("HP Laptop 15-fd1653TU"),
+            [configFields[1].Id] = Extraction("E52PWPA#ACE")
+        };
+
+        var mismatch = CoConfigValidationService.Create(
+            Guid.NewGuid(), coFields, configFields, coActual, configActual,
+            DateTimeOffset.UtcNow, true, _comparisonService);
+        configActual.Remove(configFields[1].Id);
+        var unreadable = CoConfigValidationService.Create(
+            Guid.NewGuid(), coFields, configFields, coActual, configActual,
+            DateTimeOffset.UtcNow, true, _comparisonService);
+
+        Assert.Equal(InspectionStatus.FAIL, mismatch.Status);
+        Assert.All(mismatch.FieldComparisons, comparison => Assert.Equal(InspectionStatus.FAIL, comparison.Status));
+        Assert.Equal(InspectionStatus.FAIL, unreadable.Status);
+        Assert.Equal(
+            InspectionStatus.REVIEW_REQUIRED,
+            unreadable.FieldComparisons.Single(comparison => comparison.FieldKey == "PART_NUMBER_TO_QUEUE_NO").Status);
+    }
+
     private FieldComparisonAssessment Compare(string fieldName, string master, string actual) =>
         _comparisonService.Compare(
             CreateField(fieldName, fieldName),
             new FieldObservation { Value = master, Confidence = 0.95 },
             new FieldObservation { Value = actual, Confidence = 0.95 });
+
+    private static ConfiguredFieldExtraction Extraction(string value) =>
+        new(new FieldObservation { Value = value, Confidence = 0.95 }, null, "Test field value.");
 
     private static FieldDefinition CreateField(string fieldName, string displayName) => new()
     {

@@ -99,6 +99,31 @@ def _make_config_label() -> bytes:
     return buffer.tobytes()
 
 
+def _make_co_label() -> tuple[bytes, str]:
+    image = np.full((1600, 1200, 3), 255, dtype=np.uint8)
+    lines = [
+        ("HP Laptop", (100, 190), 1.3),
+        ("15-fd1652TU", (100, 285), 1.2),
+        ("S/N 1N4635062D", (100, 420), 1.15),
+        ("P/N E52PWPA#ACJ", (100, 550), 1.15),
+        ("Intel Core 5 120U Processor", (100, 700), 0.9),
+        ("PRDN Order 123456789", (100, 820), 0.9),
+        ("Work Order 99887766", (100, 900), 0.9),
+        ("WLAN MAC 00:11:22:33:44:55", (100, 980), 0.9),
+        ("BARCODE 123456789012", (100, 1060), 0.9),
+    ]
+    for text, origin, scale in lines:
+        cv2.putText(image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 2, cv2.LINE_AA)
+    encoder = cv2.QRCodeEncoder_create()
+    qr = encoder.encode("https://example.test/label/1N4635062D?240=E52PWPA%23ACJ")
+    qr = cv2.resize(qr, (240, 240), interpolation=cv2.INTER_NEAREST)
+    image[60:300, 850:1090] = cv2.cvtColor(qr, cv2.COLOR_GRAY2BGR)
+    encoded, buffer = cv2.imencode(".png", image)
+    if not encoded:
+        raise RuntimeError("Could not encode the generated CO label.")
+    return buffer.tobytes(), "https://example.test/label/1N4635062D?240=E52PWPA%23ACJ"
+
+
 class ConfigOCRApiUploadTests(unittest.TestCase):
     def test_config_upload_returns_only_the_two_targeted_fields(self) -> None:
         configured_fields = [
@@ -138,6 +163,51 @@ class ConfigOCRApiUploadTests(unittest.TestCase):
 
 @unittest.skipUnless(_tesseract_available(), "Native Tesseract is required for this OCR API test.")
 class OCRApiEndToEndTests(unittest.TestCase):
+    def test_co_extraction_returns_only_the_four_targeted_fields(self) -> None:
+        configured_fields = [
+            {"field_name": "SERIAL_NUMBER", "display_name": "S/N", "confidence_threshold": 0.5},
+            {"field_name": "PART_NUMBER", "display_name": "P/N", "confidence_threshold": 0.5},
+            {"field_name": "MODEL_NO", "display_name": "Model No.", "confidence_threshold": 0.5},
+            {"field_name": "QR_CODE", "display_name": "QR Code", "confidence_threshold": 0.5},
+            {"field_name": "PROCESSOR", "display_name": "Processor"},
+        ]
+        app = FastAPI()
+        app.include_router(router)
+        original, expected_qr = _make_co_label()
+
+        with tempfile.TemporaryDirectory() as temporary:
+            service = OCRService(
+                TesseractOCRProvider(),
+                OCRArtifactStore(Path(temporary)),
+            )
+            with patch("app.api.routes.ocr_service", service), TestClient(app) as client:
+                response = client.post(
+                    "/ocr/extract",
+                    files={"file": ("co.png", original, "image/png")},
+                    data={"field_config": json.dumps(configured_fields), "label_type": "CO"},
+                )
+            result = response.json()
+            job_directory = Path(temporary, result["job_id"])
+            self.assertEqual("", (job_directory / "ocr.txt").read_text(encoding="utf-8"))
+            parsed = (job_directory / "parsed.json").read_text(encoding="utf-8")
+
+        self.assertEqual(200, response.status_code, response.text)
+        candidates = {candidate["field_name"]: candidate for candidate in result["field_candidates"]}
+        self.assertEqual(
+            {"SERIAL_NUMBER", "PART_NUMBER", "MODEL_NO", "QR_CODE"},
+            set(candidates),
+        )
+        self.assertEqual("1N4635062D", candidates["SERIAL_NUMBER"]["value"])
+        self.assertEqual("E52PWPA#ACJ", candidates["PART_NUMBER"]["value"])
+        self.assertEqual("HP Laptop 15-fd1652TU", candidates["MODEL_NO"]["value"])
+        self.assertEqual(expected_qr, candidates["QR_CODE"]["value"])
+        self.assertEqual([], result["lines"])
+        self.assertEqual("", result["raw_text"])
+        self.assertTrue(all(candidate["debug"] is None for candidate in candidates.values()))
+
+        for unrelated_text in ("Processor", "123456789", "99887766", "00:11:22:33:44:55"):
+            self.assertNotIn(unrelated_text, parsed)
+
     def test_tesseract_upload_extracts_only_config_model_and_queue_rois(self) -> None:
         configured_fields = [
             {"field_name": "MODEL_NO", "display_name": "Model No.", "confidence_threshold": 0.55},

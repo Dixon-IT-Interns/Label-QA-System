@@ -32,6 +32,7 @@ async def extract_label(
     file: UploadFile = File(...),
     field_config: str | None = Form(default=None),
     minimum_confidence: float | None = Form(default=None),
+    label_type: str | None = Form(default=None),
 ) -> OCRResponse:
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=415, detail="Only JPEG, PNG, and WebP images are supported.")
@@ -57,6 +58,7 @@ async def extract_label(
             fields,
             minimum_confidence,
             suffix,
+            label_type,
         )
     except ImageQualityError as error:
         raise HTTPException(
