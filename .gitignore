@@ -1,0 +1,14 @@
+.vs/
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+**/venv/
+*.py[cod]
+ocr-service/.env
+storage/inspections/*
+!storage/inspections/.gitkeep
+storage/ocr/*

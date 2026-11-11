@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Dixon.LabelVerification.API.Tests/Dixon.LabelVerification.API.Tests.csproj" />
+  <Project Path="Dixon.LabelVerification.API/Dixon.LabelVerification.API.csproj" />
+</Solution>
