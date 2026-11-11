@@ -407,8 +407,8 @@ public sealed class InspectionManagementService(
         var configProfile = await db.LabelProfiles.AsNoTracking()
             .Include(x => x.FieldDefinitions).ThenInclude(x => x.Aliases)
             .SingleAsync(x => x.Id == inspection.LabelProfileConfigId, cancellationToken);
-        var coFields = coProfile.FieldDefinitions.Where(x => x.IsActive).OrderBy(x => x.DisplayOrder).ToList();
-        var configFields = configProfile.FieldDefinitions.Where(x => x.IsActive).OrderBy(x => x.DisplayOrder).ToList();
+        var coFields = CoComparisonFieldSelector.Select(coProfile.FieldDefinitions);
+        var configFields = ConfigComparisonFieldSelector.Select(configProfile.FieldDefinitions);
         var extractions = inspection.Images.ToDictionary(
             x => x.ImageType,
             x => BuildFieldExtractions(x, x.LabelType == LabelType.CO ? coFields : configFields));
@@ -421,11 +421,12 @@ public sealed class InspectionManagementService(
             inspection.Id, LabelType.CONFIG, InspectionStageType.CONFIG_COMPARISON, configFields,
             extractions[InspectionImageType.MASTER_CONFIG], extractions[InspectionImageType.ACTUAL_CONFIG],
             DateTimeOffset.UtcNow);
-        var serialStage = CreateSerialStage(
-            inspection.Id, coProfile, configProfile,
+        var serialStage = CoConfigValidationService.Create(
+            inspection.Id, coFields, configFields,
             extractions[InspectionImageType.ACTUAL_CO], extractions[InspectionImageType.ACTUAL_CONFIG],
             DateTimeOffset.UtcNow,
-            coStage.Status == InspectionStatus.PASS && configStage.Status == InspectionStatus.PASS);
+            coStage.Status == InspectionStatus.PASS && configStage.Status == InspectionStatus.PASS,
+            fieldComparisonService);
         var completedAtUtc = DateTimeOffset.UtcNow;
         coStage.CompletedAtUtc = completedAtUtc;
         configStage.CompletedAtUtc = completedAtUtc;
@@ -655,7 +656,7 @@ public sealed class InspectionManagementService(
                 ?? throw new InspectionProcessingException("The inspection's pinned CO profile is unavailable.");
             var configProfile = profiles.SingleOrDefault(x => x.Id == inspection.LabelProfileConfigId)
                 ?? throw new InspectionProcessingException("The inspection's pinned CONFIG profile is unavailable.");
-            var coFields = coProfile.FieldDefinitions.Where(x => x.IsActive).OrderBy(x => x.DisplayOrder).ToList();
+            var coFields = CoComparisonFieldSelector.Select(coProfile.FieldDefinitions);
             var configFields = ConfigComparisonFieldSelector.Select(configProfile.FieldDefinitions);
 
             foreach (var image in inspection.Images.OrderBy(x => x.ImageType))
@@ -682,6 +683,7 @@ public sealed class InspectionManagementService(
                     confidence_threshold = x.OcrConfidenceThreshold
                 }).ToArray();
                 content.Add(new StringContent(JsonSerializer.Serialize(fieldConfig)), "field_config");
+                content.Add(new StringContent(image.LabelType.ToString()), "label_type");
                 content.Add(new StringContent(globalThreshold.ToString(
                     System.Globalization.CultureInfo.InvariantCulture)), "minimum_confidence");
                 logger.LogInformation(
@@ -704,20 +706,24 @@ public sealed class InspectionManagementService(
                     "OCR_REQUEST_SUCCESS inspectionId={InspectionId} imageId={ImageId} imageType={ImageType} engine={Engine} status={OcrStatus} confidence={Confidence} candidateCount={CandidateCount}",
                     inspectionId, image.Id, image.ImageType, result.Engine, result.Status, result.OcrConfidence,
                     result.FieldCandidates?.Count ?? 0);
-                using var barcodeContent = new MultipartFormDataContent();
-                var barcodeImageContent = new ByteArrayContent(bytes);
-                barcodeImageContent.Headers.ContentType = new MediaTypeHeaderValue(image.ContentType);
-                barcodeContent.Add(barcodeImageContent, "file", image.OriginalFileName);
-                using var barcodeResponse = await client.PostAsync("ocr/barcode", barcodeContent, cancellationToken);
-                if (!barcodeResponse.IsSuccessStatusCode)
+                OcrBarcodeResponse? barcodeResult = null;
+                if (image.LabelType == LabelType.CONFIG)
                 {
-                    var error = await ReadOcrServiceErrorAsync(barcodeResponse, cancellationToken);
-                    throw new InspectionProcessingException(
-                        $"OCR barcode service returned HTTP {(int)barcodeResponse.StatusCode} for {image.ImageType}: {error}");
+                    using var barcodeContent = new MultipartFormDataContent();
+                    var barcodeImageContent = new ByteArrayContent(bytes);
+                    barcodeImageContent.Headers.ContentType = new MediaTypeHeaderValue(image.ContentType);
+                    barcodeContent.Add(barcodeImageContent, "file", image.OriginalFileName);
+                    using var barcodeResponse = await client.PostAsync("ocr/barcode", barcodeContent, cancellationToken);
+                    if (!barcodeResponse.IsSuccessStatusCode)
+                    {
+                        var error = await ReadOcrServiceErrorAsync(barcodeResponse, cancellationToken);
+                        throw new InspectionProcessingException(
+                            $"OCR barcode service returned HTTP {(int)barcodeResponse.StatusCode} for {image.ImageType}: {error}");
+                    }
+                    barcodeResult = await barcodeResponse.Content.ReadFromJsonAsync<OcrBarcodeResponse>(
+                        cancellationToken: cancellationToken)
+                        ?? throw new InspectionProcessingException("OCR barcode service returned an empty response.");
                 }
-                var barcodeResult = await barcodeResponse.Content.ReadFromJsonAsync<OcrBarcodeResponse>(
-                    cancellationToken: cancellationToken)
-                    ?? throw new InspectionProcessingException("OCR barcode service returned an empty response.");
                 if (result.Status is not ("PROCESSING" or "REVIEW_REQUIRED")
                     || result.ImageQuality is null
                     || result.ImageQuality.Width <= 0
@@ -739,12 +745,39 @@ public sealed class InspectionManagementService(
                     throw new InspectionProcessingException("OCR service returned an invalid response.");
                 }
 
+                if (image.LabelType == LabelType.CO)
+                {
+                    var configuredCoKeys = coFields
+                        .Select(field => field.FieldName)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    var coCandidates = (result.FieldCandidates ?? [])
+                        .Where(candidate => configuredCoKeys.Contains(candidate.FieldName))
+                        .Select(candidate => candidate with { Debug = null })
+                        .ToList();
+                    if (coCandidates.Count != configuredCoKeys.Count
+                        || coCandidates.Select(candidate => candidate.FieldName)
+                            .Distinct(StringComparer.OrdinalIgnoreCase).Count() != configuredCoKeys.Count)
+                    {
+                        throw new InspectionProcessingException(
+                            "CO OCR must return one candidate for each configured S/N, P/N, Model No., and QR Code field.");
+                    }
+
+                    result = result with
+                    {
+                        RawText = string.Empty,
+                        Lines = [],
+                        FieldCandidates = coCandidates,
+                        OcrConfidence = coCandidates.Average(candidate => candidate.Confidence)
+                    };
+                }
+
                 var rawText = result.RawText ?? string.Join(Environment.NewLine, result.Lines.Select(x => x.Text));
                 if (rawText.Length > 20000)
                     throw new InspectionProcessingException($"OCR text for {image.ImageType} exceeds the supported size.");
                 double? confidence = result.OcrConfidence
                     ?? (result.Lines.Count == 0 ? null : result.Lines.Average(x => x.Confidence));
-                var imageNeedsReview = result.Status == "REVIEW_REQUIRED" || result.Lines.Count == 0;
+                var imageNeedsReview = result.Status == "REVIEW_REQUIRED"
+                    || result.Lines.Count == 0 && (result.FieldCandidates?.Count ?? 0) == 0;
                 image.ImageQualityStatus = imageNeedsReview ? "REVIEW_REQUIRED" : "ACCEPTED";
                 var ocrResult = new OcrResult
                 {
@@ -771,13 +804,13 @@ public sealed class InspectionManagementService(
                             reason = candidate.Reason,
                             debug = candidate.Debug
                         }).ToArray(),
-                        barcodes = barcodeResult.Barcodes,
-                        warnings = (result.Warnings ?? []).Concat(barcodeResult.Warnings).ToArray(),
+                        barcodes = barcodeResult?.Barcodes ?? [],
+                        warnings = (result.Warnings ?? []).Concat(barcodeResult?.Warnings ?? []).ToArray(),
                         imageQuality = result.ImageQuality,
-                        processingDurationMs = result.ProcessingDurationMs + barcodeResult.ProcessingDurationMs
+                        processingDurationMs = result.ProcessingDurationMs + (barcodeResult?.ProcessingDurationMs ?? 0)
                     }),
                     OverallConfidence = confidence,
-                    ProcessingDurationMs = result.ProcessingDurationMs + barcodeResult.ProcessingDurationMs
+                    ProcessingDurationMs = result.ProcessingDurationMs + (barcodeResult?.ProcessingDurationMs ?? 0)
                 };
                 db.OcrResults.Add(ocrResult);
                 logger.LogInformation(
@@ -805,9 +838,10 @@ public sealed class InspectionManagementService(
             var configStage = CreateComparisonStage(
                 inspection.Id, LabelType.CONFIG, InspectionStageType.CONFIG_COMPARISON, configFields,
                 configMaster, configActual, job.StartedAtUtc);
-            var serialStage = CreateSerialStage(
-                inspection.Id, coProfile, configProfile, coActual, configActual, job.StartedAtUtc,
-                coStage.Status == InspectionStatus.PASS && configStage.Status == InspectionStatus.PASS);
+            var serialStage = CoConfigValidationService.Create(
+                inspection.Id, coFields, configFields, coActual, configActual, job.StartedAtUtc,
+                coStage.Status == InspectionStatus.PASS && configStage.Status == InspectionStatus.PASS,
+                fieldComparisonService);
             db.StageResults.AddRange(coStage, configStage, serialStage);
 
             var now = DateTimeOffset.UtcNow;
@@ -1146,107 +1180,6 @@ public sealed class InspectionManagementService(
         return stage;
     }
 
-    private StageResult CreateSerialStage(
-        Guid inspectionId,
-        LabelProfile coProfile,
-        LabelProfile configProfile,
-        IReadOnlyDictionary<Guid, ConfiguredFieldExtraction> coActual,
-        IReadOnlyDictionary<Guid, ConfiguredFieldExtraction> configActual,
-        DateTimeOffset? startedAtUtc,
-        bool labelStagesPassed)
-    {
-        var coSerialFields = coProfile.FieldDefinitions
-            .Where(IsActiveSerialField).ToList();
-        var configSerialFields = configProfile.FieldDefinitions
-            .Where(IsActiveSerialField).ToList();
-        var coField = coSerialFields.Count == 1 ? coSerialFields[0] : null;
-        var configField = configSerialFields.Count == 1 ? configSerialFields[0] : null;
-        var coExtraction = coField is null ? null : coActual[coField.Id];
-        var configExtraction = configField is null ? null : configActual[configField.Id];
-        var coObservation = coExtraction?.Observation;
-        var configObservation = configExtraction?.Observation;
-        var status = InspectionStatus.REVIEW_REQUIRED;
-        var reason = "Serial fields must be configured once in both profiles and read with sufficient confidence.";
-
-        if (!labelStagesPassed)
-        {
-            status = InspectionStatus.BLOCKED;
-            reason = "Serial cross-label validation was not run because both label comparison stages must pass.";
-        }
-        else if (coSerialFields.Count == 0 && configSerialFields.Count == 0)
-        {
-            status = InspectionStatus.NOT_APPLICABLE;
-            reason = "Neither pinned profile configures a serial-number field.";
-        }
-        else if (coField is not null && configField is not null
-            && coField.ComparisonStrategy == configField.ComparisonStrategy
-            && coField.NumericAbsoluteTolerance == configField.NumericAbsoluteTolerance
-            && coField.NumericRelativeTolerance == configField.NumericRelativeTolerance)
-        {
-            var coReadable = IsReadable(coObservation, coField.OcrConfidenceThreshold);
-            var configReadable = IsReadable(configObservation, configField.OcrConfidenceThreshold);
-            if (!coReadable && !configReadable && !coField.Required && !configField.Required)
-            {
-                status = InspectionStatus.NOT_APPLICABLE;
-                reason = "Both configured serial fields are optional and were not readable.";
-            }
-            else if (!coReadable || !configReadable)
-            {
-                reason = "A serial value is missing, ambiguous, or below its configured confidence threshold.";
-            }
-            else
-            {
-                var assessment = fieldComparisonService.Compare(coField, coObservation, configObservation);
-                status = assessment.Status;
-                reason = assessment.Reason;
-            }
-        }
-        else if (coField is not null && configField is not null)
-        {
-            reason = "The pinned profiles specify different serial comparison settings.";
-        }
-
-        var fieldForComparison = coField ?? configField;
-        var comparison = fieldForComparison is null
-            ? null
-            : new FieldComparison
-            {
-                FieldDefinitionId = fieldForComparison.Id,
-                FieldKey = fieldForComparison.FieldName,
-                MasterValue = coObservation?.Value,
-                ActualValue = configObservation?.Value,
-                NormalizedMasterValue = coObservation is null
-                    ? null
-                    : FieldComparisonService.NormalizeForStorage(fieldForComparison, coObservation.Value!),
-                NormalizedActualValue = configObservation is null || configField is null
-                    ? null
-                    : FieldComparisonService.NormalizeForStorage(configField, configObservation.Value!),
-                ComparisonStrategy = fieldForComparison.ComparisonStrategy,
-                MasterConfidence = coObservation?.Confidence,
-                ActualConfidence = configObservation?.Confidence,
-                Status = status,
-                MismatchReason = reason
-            };
-
-        var totalFields = coSerialFields.Count == 0 && configSerialFields.Count == 0 ? 0 : 1;
-        var stage = new StageResult
-        {
-            InspectionSessionId = inspectionId,
-            LabelType = LabelType.CONFIG,
-            StageType = InspectionStageType.SERIAL_VALIDATION,
-            Status = status,
-            TotalFields = totalFields,
-            MatchedFields = status == InspectionStatus.PASS ? 1 : 0,
-            MismatchedFields = status == InspectionStatus.FAIL ? 1 : 0,
-            UnreadableFields = status == InspectionStatus.REVIEW_REQUIRED ? 1 : 0,
-            StartedAtUtc = startedAtUtc,
-            Remarks = reason
-        };
-        if (comparison is not null)
-            stage.FieldComparisons.Add(comparison);
-        return stage;
-    }
-
     private static InspectionStatus AggregateFieldStatuses(
         IReadOnlyCollection<FieldComparison> comparisons,
         int configuredFieldCount)
@@ -1262,9 +1195,6 @@ public sealed class InspectionManagementService(
             ? InspectionStatus.PASS
             : InspectionStatus.REVIEW_REQUIRED;
     }
-
-    private static bool IsActiveSerialField(FieldDefinition field) =>
-        field.IsActive && string.Equals(field.DataType, "SerialNumber", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsReadable(FieldObservation? observation, double minimumConfidence) =>
         observation is not null

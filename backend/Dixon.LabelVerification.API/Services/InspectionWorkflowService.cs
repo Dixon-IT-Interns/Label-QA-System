@@ -30,7 +30,7 @@ public sealed class InspectionWorkflowService : IInspectionWorkflowService
         {
             return new InspectionWorkflowAssessment(
                 InspectionStatus.BLOCKED,
-                "Serial validation requires both CO and Config comparison stages to pass.");
+                "CO / CONFIG validation requires both label comparison stages to pass.");
         }
 
         if (coStage is null || configStage is null || serialStage is null
@@ -45,63 +45,20 @@ public sealed class InspectionWorkflowService : IInspectionWorkflowService
         {
             return new InspectionWorkflowAssessment(
                 InspectionStatus.BLOCKED,
-                "Serial validation requires both CO and Config comparison stages to pass.");
+                "CO / CONFIG validation requires both label comparison stages to pass.");
         }
 
         if (serialStage == InspectionStatus.READY)
         {
             return new InspectionWorkflowAssessment(
                 InspectionStatus.PROCESSING,
-                "Serial validation has not completed.");
+                "CO / CONFIG validation has not completed.");
         }
 
         return serialStage is InspectionStatus.PASS or InspectionStatus.NOT_APPLICABLE
             ? new InspectionWorkflowAssessment(InspectionStatus.PASS, "All applicable inspection stages passed.")
             : new InspectionWorkflowAssessment(
                 InspectionStatus.REVIEW_REQUIRED,
-                "Serial validation did not complete with readable evidence.");
+                "CO / CONFIG validation did not complete with readable evidence.");
     }
-
-    public InspectionWorkflowAssessment EvaluateFinalStatus(
-        InspectionStatus? coStage,
-        InspectionStatus? configStage,
-        FieldObservation? actualCoSerial,
-        FieldObservation? actualConfigSerial,
-        double serialMinimumConfidence)
-    {
-        var stageAssessment = EvaluateFinalStatus(coStage, configStage, InspectionStatus.NOT_APPLICABLE);
-        if (stageAssessment.Status != InspectionStatus.PASS)
-            return stageAssessment;
-
-        if (!IsReadable(actualCoSerial, serialMinimumConfidence)
-            && !IsReadable(actualConfigSerial, serialMinimumConfidence))
-        {
-            return new InspectionWorkflowAssessment(
-                InspectionStatus.REVIEW_REQUIRED,
-                "Available serial-number evidence is missing or below the configured confidence threshold.");
-        }
-
-        if (!IsReadable(actualCoSerial, serialMinimumConfidence)
-            || !IsReadable(actualConfigSerial, serialMinimumConfidence))
-        {
-            return new InspectionWorkflowAssessment(
-                InspectionStatus.REVIEW_REQUIRED,
-                "A serial number is available on only one label or is below the configured confidence threshold.");
-        }
-
-        var serialsMatch = string.Equals(
-            actualCoSerial!.Value!.Trim(),
-            actualConfigSerial!.Value!.Trim(),
-            StringComparison.OrdinalIgnoreCase);
-
-        return serialsMatch
-            ? new InspectionWorkflowAssessment(InspectionStatus.PASS, "Both label stages passed and serial numbers match.")
-            : new InspectionWorkflowAssessment(InspectionStatus.FAIL, "CO and Config serial numbers do not match.");
-    }
-
-    private static bool IsReadable(FieldObservation? observation, double minimumConfidence) =>
-        observation is not null
-        && !string.IsNullOrWhiteSpace(observation.Value)
-        && observation.Confidence is >= 0 and <= 1
-        && observation.Confidence >= minimumConfidence;
 }

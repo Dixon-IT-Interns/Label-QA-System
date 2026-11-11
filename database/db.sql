@@ -500,21 +500,20 @@ BEGIN TRY
     );
     INSERT @HpFields(FieldKey, DisplayName, DisplayOrder)
     VALUES
-        (N'MODEL', N'Model', 1),
-        (N'PROCESSOR', N'Processor', 2),
-        (N'STORAGE', N'Storage', 3),
-        (N'RAM', N'RAM', 4),
-        (N'OPERATING_SYSTEM', N'Operating System', 5),
-        (N'DISPLAY', N'Display', 6),
-        (N'BATTERY', N'Battery', 7);
+        (N'SERIAL_NUMBER', N'S/N', 1),
+        (N'PART_NUMBER', N'P/N', 2),
+        (N'MODEL_NO', N'Model No.', 3),
+        (N'QR_CODE', N'QR Code', 4);
 
     INSERT dbo.FieldDefinitions
         (Id, LabelProfileId, FieldKey, DisplayName, DataType, IsRequired, IsCritical,
          OCRConfidenceThreshold, DisplayOrder, IsActive, ComparisonStrategy,
          NumericAbsoluteTolerance, NumericRelativeTolerance, CreatedAtUtc)
     SELECT NEWID(), profile.Id, field.FieldKey, field.DisplayName, N'Text', 1, 1,
-           CASE WHEN field.FieldKey = N'BATTERY' THEN 0.50 ELSE 0.55 END,
-           field.DisplayOrder, 1, N'NormalizedText', 0, 0, SYSUTCDATETIME()
+           0.55,
+           field.DisplayOrder, 1,
+           CASE WHEN field.FieldKey = N'MODEL_NO' THEN N'CaseInsensitive' ELSE N'Exact' END,
+           0, 0, SYSUTCDATETIME()
     FROM dbo.LabelProfiles AS profile
     CROSS JOIN @HpFields AS field
     WHERE profile.ModelId = '73A3F07D-C906-4E49-A3DB-4854AB1A9D05'
@@ -523,6 +522,32 @@ BEGIN TRY
       AND NOT EXISTS
         (SELECT 1 FROM dbo.FieldDefinitions AS existing
          WHERE existing.LabelProfileId = profile.Id AND existing.FieldKey = field.FieldKey);
+
+    UPDATE definition
+       SET definition.IsActive = 0
+    FROM dbo.FieldDefinitions AS definition
+    JOIN dbo.LabelProfiles AS profile ON profile.Id = definition.LabelProfileId
+    WHERE profile.ModelId = '73A3F07D-C906-4E49-A3DB-4854AB1A9D05'
+      AND profile.ProfileVersion = 1
+      AND profile.ProfileName = N'HP-15-FD1652TU-CO'
+      AND definition.FieldKey NOT IN (N'SERIAL_NUMBER', N'PART_NUMBER', N'MODEL_NO', N'QR_CODE');
+
+    UPDATE definition
+       SET definition.DisplayName = field.DisplayName,
+           definition.DataType = N'Text',
+           definition.IsRequired = 1,
+           definition.IsCritical = 1,
+           definition.OCRConfidenceThreshold = 0.55,
+           definition.DisplayOrder = field.DisplayOrder,
+           definition.IsActive = 1,
+           definition.ComparisonStrategy =
+               CASE WHEN field.FieldKey = N'MODEL_NO' THEN N'CaseInsensitive' ELSE N'Exact' END
+    FROM dbo.FieldDefinitions AS definition
+    JOIN dbo.LabelProfiles AS profile ON profile.Id = definition.LabelProfileId
+    JOIN @HpFields AS field ON field.FieldKey = definition.FieldKey
+    WHERE profile.ModelId = '73A3F07D-C906-4E49-A3DB-4854AB1A9D05'
+      AND profile.ProfileVersion = 1
+      AND profile.ProfileName = N'HP-15-FD1652TU-CO';
 
     UPDATE modelField
        SET modelField.IsActive = 0
@@ -625,6 +650,14 @@ BEGIN TRY
     );
     INSERT @HpAliases(FieldKey, AliasText)
     VALUES
+        (N'SERIAL_NUMBER', N'S/N'),
+        (N'SERIAL_NUMBER', N'Serial Number'),
+        (N'PART_NUMBER', N'P/N'),
+        (N'PART_NUMBER', N'Part Number'),
+        (N'MODEL_NO', N'Model'),
+        (N'MODEL_NO', N'Model Number'),
+        (N'MODEL_NO', N'Product Model'),
+        (N'QR_CODE', N'QR Code'),
         (N'MODEL', N'Model Number'),
         (N'MODEL', N'Product Model'),
         (N'PROCESSOR', N'CPU'),

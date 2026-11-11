@@ -26,7 +26,7 @@ def prepare_config_label(
         rectified, crop = _fallback_crop(image)
         source = "normalized_fallback"
         corners = None
-        logger.info("CONFIG label boundary was not detected; using normalized fallback ROI.")
+        logger.info("Label boundary was not detected; using normalized fallback ROI.")
 
     rotated = rectified.shape[1] > rectified.shape[0]
     if rotated:

@@ -149,45 +149,6 @@ public sealed class FieldComparisonServiceTests
     }
 
     [Fact]
-    public void SerialComparisonCannotPassBeforeBothLabelStagesPass()
-    {
-        var result = new InspectionWorkflowService().EvaluateFinalStatus(
-            InspectionStatus.READY,
-            InspectionStatus.READY,
-            null,
-            null,
-            0.9);
-
-        Assert.Equal(InspectionStatus.BLOCKED, result.Status);
-    }
-
-    [Fact]
-    public void MissingSerialEvidenceRequiresReviewAfterBothLabelStagesPass()
-    {
-        var result = new InspectionWorkflowService().EvaluateFinalStatus(
-            InspectionStatus.PASS,
-            InspectionStatus.PASS,
-            null,
-            null,
-            0.9);
-
-        Assert.Equal(InspectionStatus.REVIEW_REQUIRED, result.Status);
-    }
-
-    [Fact]
-    public void SerialComparisonCanPassWhenBothLabelStagesAndSerialEvidencePass()
-    {
-        var result = new InspectionWorkflowService().EvaluateFinalStatus(
-            InspectionStatus.PASS,
-            InspectionStatus.PASS,
-            new FieldObservation { Value = "ABC123", Confidence = 0.99 },
-            new FieldObservation { Value = "abc123", Confidence = 0.99 },
-            0.9);
-
-        Assert.Equal(InspectionStatus.PASS, result.Status);
-    }
-
-    [Fact]
     public void ConfiguredNotApplicableSerialStageCanPassAfterBothLabelsPass()
     {
         var result = new InspectionWorkflowService().EvaluateFinalStatus(
@@ -210,9 +171,7 @@ public sealed class FieldComparisonServiceTests
         var result = new InspectionWorkflowService().EvaluateFinalStatus(
             coStage,
             configStage,
-            null,
-            null,
-            0.9);
+            InspectionStatus.PASS);
 
         Assert.Equal(expected, result.Status);
     }

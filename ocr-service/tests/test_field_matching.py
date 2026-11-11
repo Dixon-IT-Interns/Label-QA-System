@@ -381,6 +381,54 @@ class TesseractProviderTests(unittest.TestCase):
 
 
 class OCRServicePolicyTests(unittest.TestCase):
+    def test_co_extraction_does_not_guess_values_from_unrelated_label_text(self) -> None:
+        fields = [
+            ConfiguredField(field_name="SERIAL_NUMBER", display_name="S/N"),
+            ConfiguredField(field_name="PART_NUMBER", display_name="P/N"),
+            ConfiguredField(field_name="MODEL_NO", display_name="Model No."),
+            ConfiguredField(field_name="QR_CODE", display_name="QR Code"),
+        ]
+        provider = _FixedProvider([
+            OCRLine(text="PRDN Order 1N4635062D", confidence=0.99),
+            OCRLine(text="Work Order 99887766", confidence=0.99),
+            OCRLine(text="WLAN MAC 00:11:22:33:44:55", confidence=0.99),
+            OCRLine(text="Intel Core 5 120U Processor", confidence=0.99),
+        ])
+
+        response = OCRService(provider).inspect(
+            self._config_image_bytes(),
+            fields,
+            label_type="CO",
+        )
+
+        self.assertEqual(["NOT_FOUND"] * 4, [candidate.status for candidate in response.field_candidates])
+        self.assertTrue(all(candidate.value is None for candidate in response.field_candidates))
+        self.assertEqual("", response.raw_text)
+        self.assertEqual([], response.lines)
+
+    def test_co_extraction_hides_values_below_field_confidence_threshold(self) -> None:
+        fields = [
+            ConfiguredField(field_name="SERIAL_NUMBER", display_name="S/N"),
+            ConfiguredField(field_name="PART_NUMBER", display_name="P/N"),
+            ConfiguredField(field_name="MODEL_NO", display_name="Model No."),
+            ConfiguredField(field_name="QR_CODE", display_name="QR Code"),
+        ]
+        provider = _FixedProvider([
+            OCRLine(text="S/N 1N4635062D", confidence=0.4),
+            OCRLine(text="P/N E52PWPA#ACJ", confidence=0.4),
+            OCRLine(text="HP Laptop 15-fd1652TU", confidence=0.4),
+        ])
+
+        response = OCRService(provider).inspect(
+            self._config_image_bytes(),
+            fields,
+            minimum_confidence=0.85,
+            label_type="CO",
+        )
+
+        self.assertEqual("REVIEW_REQUIRED", response.status)
+        self.assertTrue(all(candidate.value is None for candidate in response.field_candidates))
+
     def test_config_ocr_uses_only_top_model_and_below_barcode_queue_rois(self) -> None:
         provider = _ConfigROIProvider(
             [OCRLine(text="HP Laptop 15-fd1654TU", confidence=0.99)],
