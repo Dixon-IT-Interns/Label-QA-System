@@ -115,13 +115,13 @@ def _make_co_label() -> tuple[bytes, str]:
     for text, origin, scale in lines:
         cv2.putText(image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 2, cv2.LINE_AA)
     encoder = cv2.QRCodeEncoder_create()
-    qr = encoder.encode("https://example.test/label/1N4635062D?240=E52PWPA%23ACJ")
+    qr = encoder.encode("https://example.test/label/21/1N4635062D?240=E52PWPA%23ACJ")
     qr = cv2.resize(qr, (240, 240), interpolation=cv2.INTER_NEAREST)
     image[60:300, 850:1090] = cv2.cvtColor(qr, cv2.COLOR_GRAY2BGR)
     encoded, buffer = cv2.imencode(".png", image)
     if not encoded:
         raise RuntimeError("Could not encode the generated CO label.")
-    return buffer.tobytes(), "https://example.test/label/1N4635062D?240=E52PWPA%23ACJ"
+    return buffer.tobytes(), "https://example.test/label/21/1N4635062D?240=E52PWPA%23ACJ"
 
 
 class ConfigOCRApiUploadTests(unittest.TestCase):

@@ -268,9 +268,9 @@ class OCRService:
         height, width = image.shape[:2]
         model_field = next(field for field in fields if _normalized_field_name(field.field_name) == "modelno")
         model_left = int(width * 0.04)
-        model_top = int(height * 0.10)
-        model_right = max(model_left + 1, int(width * 0.55))
-        model_bottom = max(model_top + 1, int(height * 0.22))
+        model_top = int(height * 0.08)
+        model_right = max(model_left + 1, int(width * 0.68))
+        model_bottom = max(model_top + 1, int(height * 0.28))
         model_roi = image[model_top:model_bottom, model_left:model_right]
         model, _, _, model_version = _extract_model_number(
             model_field,
@@ -296,6 +296,11 @@ class OCRService:
                     kind,
                     qr_candidate.value if qr_candidate.status == "DETECTED" else None,
                 )
+                if kind == "serialnumber":
+                    candidate = _cross_check_serial_with_qr(
+                        candidate,
+                        qr_candidate.value if qr_candidate.status == "DETECTED" else None,
+                    )
                 candidates_by_kind[kind] = candidate
                 engine_versions.extend(versions)
 
@@ -514,16 +519,16 @@ def _extract_co_labeled_value(
     qr_payload: str | None = None,
 ) -> tuple[FieldCandidate, list[str]]:
     height, width = image.shape[:2]
-    top_ratio, bottom_ratio = (0.23, 0.31) if kind == "serialnumber" else (0.29, 0.39)
+    top_ratio, bottom_ratio = (0.20, 0.36) if kind == "serialnumber" else (0.29, 0.39)
     top_limit = int(height * top_ratio)
     bottom_limit = int(height * bottom_ratio)
-    band_height = max(48, int(height * (0.05 if kind == "serialnumber" else 0.055)))
-    step = max(16, int(height * 0.0125))
+    band_height = max(72, int(height * (0.12 if kind == "serialnumber" else 0.055)))
+    step = max(16, int(height * (0.025 if kind == "serialnumber" else 0.0125)))
     left = int(width * 0.05)
     right = max(left + 1, int(width * 0.62))
     label = (
         re.compile(
-            r"(?<![A-Z0-9])S\s*/\s*N(?![A-Z0-9])[\s|_:=\-]{0,8}(?P<value>[A-Z0-9]{8,20})(?![A-Z0-9])",
+            r"(?<![A-Z0-9])S\s*/\s*N(?![A-Z0-9])[\s|_:=\-\[\](){}]{0,12}(?P<value>[A-Z0-9]{8,20})(?![A-Z0-9])",
             re.IGNORECASE,
         )
         if kind == "serialnumber"
@@ -535,6 +540,7 @@ def _extract_co_labeled_value(
     observed: dict[str, list[tuple[str, float, list[list[float]]]]] = {}
     versions: list[str] = []
     part_number = _part_number_from_qr_payload(qr_payload) if kind == "partnumber" else None
+    qr_serial_number = _serial_number_from_qr_payload(qr_payload) if kind == "serialnumber" else None
     for top in range(top_limit, max(top_limit + 1, bottom_limit - band_height + 1), step):
         bottom = min(bottom_limit, top + band_height)
         region = image[top:bottom, left:right]
@@ -576,6 +582,24 @@ def _extract_co_labeled_value(
                 observed.setdefault(value.casefold(), []).append((value, confidence, box))
 
     field_label = "S/N" if kind == "serialnumber" else "P/N"
+    if qr_serial_number:
+        qr_confirmed = [
+            detection
+            for value, detections in observed.items()
+            if _matches_qr_confirmed_serial_number(value, qr_serial_number)
+            for detection in detections
+        ]
+        if qr_confirmed:
+            _, confidence, box = max(qr_confirmed, key=lambda detection: detection[1])
+            return FieldCandidate(
+                field_name=field.field_name,
+                value=qr_serial_number,
+                confidence=confidence,
+                box=box,
+                status="DETECTED" if confidence > 0 else "NOT_FOUND",
+                reason="The printed S/N was read and cross-checked against the serial number embedded in the decoded QR payload.",
+            ), versions
+
     ranked = sorted(observed.values(), key=lambda detections: max(item[1] for item in detections), reverse=True)
     if ranked and (
         len(ranked) == 1
@@ -642,6 +666,9 @@ def _extract_co_qr(field: ConfiguredField, image: np.ndarray) -> FieldCandidate:
         if decoded_values:
             break
 
+    if not decoded_values:
+        decoded_values.extend(_decode_qr_with_zxing(region, left, top))
+
     values = {value for value, _ in decoded_values}
     if len(values) == 1:
         value = next(iter(values))
@@ -677,6 +704,116 @@ def _part_number_from_qr_payload(payload: str | None) -> str | None:
         return None
     part_number = unquote(match.group(1)).upper()
     return part_number if re.fullmatch(r"[A-Z0-9]{5,12}#[A-Z0-9]{2,6}", part_number) else None
+
+
+def _serial_number_from_qr_payload(payload: str | None) -> str | None:
+    if not payload:
+        return None
+    match = re.search(r"(?:^|/)21/([A-Z0-9]{8,20})(?=[?&#/]|$)", payload, re.IGNORECASE)
+    if match is None:
+        return None
+    return match.group(1).upper()
+
+
+def _matches_qr_confirmed_serial_number(candidate: str, serial_number: str) -> bool:
+    if len(candidate) != len(serial_number):
+        return False
+    confusions = {
+        frozenset(("S", "5")),
+        frozenset(("O", "0")),
+        frozenset(("I", "1")),
+        frozenset(("B", "8")),
+        frozenset(("Z", "2")),
+        frozenset(("G", "6")),
+        frozenset(("J", "3")),
+    }
+    differences = [
+        (observed, expected)
+        for observed, expected in zip(candidate.upper(), serial_number.upper(), strict=True)
+        if observed != expected
+    ]
+    return len(differences) <= 1 and all(
+        frozenset((observed, expected)) in confusions
+        for observed, expected in differences
+    )
+
+
+def _decode_qr_with_zxing(
+    region: np.ndarray,
+    x_offset: int,
+    y_offset: int,
+) -> list[tuple[str, list[list[float]] | None]]:
+    import zxingcpp
+
+    gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY) if region.ndim == 3 else region
+    enhanced = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8)).apply(gray)
+    variants = (
+        gray,
+        enhanced,
+        cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1],
+    )
+    decoded: list[tuple[str, list[list[float]] | None]] = []
+    seen: set[str] = set()
+    for variant in variants:
+        for scale in (1, 2):
+            candidate = (
+                cv2.resize(
+                    variant,
+                    None,
+                    fx=scale,
+                    fy=scale,
+                    interpolation=cv2.INTER_CUBIC,
+                )
+                if scale > 1
+                else variant
+            )
+            for result in zxingcpp.read_barcodes(candidate):
+                if getattr(result.format, "name", "") != "QRCode" or not result.text or result.text in seen:
+                    continue
+                seen.add(result.text)
+                position = getattr(result, "position", None)
+                points = [
+                    getattr(position, name, None)
+                    for name in ("top_left", "top_right", "bottom_right", "bottom_left")
+                ] if position is not None else []
+                box = (
+                    [
+                        [float(point.x) / scale + x_offset, float(point.y) / scale + y_offset]
+                        for point in points
+                    ]
+                    if all(point is not None for point in points)
+                    else None
+                )
+                decoded.append((str(result.text), box))
+        if decoded:
+            break
+    return decoded
+
+
+def _cross_check_serial_with_qr(
+    candidate: FieldCandidate,
+    qr_payload: str | None,
+) -> FieldCandidate:
+    qr_serial_number = _serial_number_from_qr_payload(qr_payload)
+    if candidate.status != "DETECTED" or not candidate.value:
+        return candidate
+    if not qr_serial_number:
+        return candidate.model_copy(update={
+            "value": None,
+            "confidence": 0,
+            "status": "AMBIGUOUS",
+            "reason": "The printed S/N could not be cross-checked because no serial number was available in the decoded QR payload.",
+        })
+    if candidate.value.upper() == qr_serial_number:
+        return candidate.model_copy(update={
+            "reason": "The printed S/N matched the serial number embedded in the decoded QR payload.",
+        })
+    return candidate.model_copy(update={
+        "value": None,
+        "confidence": 0,
+        "status": "AMBIGUOUS",
+        "reason": "The printed S/N does not match the serial number embedded in the decoded QR payload.",
+    })
 
 
 def _matches_qr_confirmed_part_number(candidate: str, part_number: str) -> bool:
@@ -845,14 +982,15 @@ def _extract_model_number(
                         "",
                     )
                     combined_text = f"{prefix} {text}" if prefix else text
+                laptop_match = re.search(r"\bHP\s+Laptop\b", combined_text, re.IGNORECASE)
                 model_match = re.search(
-                    r"\bHP\s+Laptop\s+\d{2}-[A-Z]{2}\d{4,}[A-Z0-9]{0,8}\b",
+                    r"\b\d{2}-[A-Z]{2}\d{4,}[A-Z0-9]{0,8}\b",
                     combined_text,
                     re.IGNORECASE,
                 )
-                if not model_match:
+                if not laptop_match or not model_match:
                     continue
-                value = re.sub(r"\s+", " ", model_match.group(0).strip())
+                value = f"{laptop_match.group(0)} {model_match.group(0)}"
                 key = re.sub(r"\s+", " ", value).casefold()
                 entry = collected.setdefault(
                     key,

@@ -11,11 +11,17 @@ import pytesseract
 
 from app.ocr.provider import OCRProvider, OCRResult, OCRUnavailableError
 from app.ocr.tesseract_provider import TesseractOCRProvider
-from app.schemas.ocr import ConfiguredField, ImageQuality, OCRLine
+from app.schemas.ocr import ConfiguredField, FieldCandidate, ImageQuality, OCRLine
 from app.image_processing.annotations import prepare_for_ocr
 from app.services.artifact_storage import OCRArtifactStore
 from app.services.field_matching import match_configured_fields
-from app.services.ocr_service import OCRService
+from app.services.ocr_service import (
+    OCRService,
+    _cross_check_serial_with_qr,
+    _extract_co_labeled_value,
+    _extract_co_qr,
+    _serial_number_from_qr_payload,
+)
 from app.services.queue_number import (
     _Barcode,
     _locate_linear_barcode_region,
@@ -381,6 +387,140 @@ class TesseractProviderTests(unittest.TestCase):
 
 
 class OCRServicePolicyTests(unittest.TestCase):
+    def test_extracts_serial_number_from_hp_qr_payload(self) -> None:
+        self.assertEqual(
+            "1N4635067J",
+            _serial_number_from_qr_payload(
+                "https;//hpsmart.com/QRC/I0B/01/885981339727/21/1N4635067J"
+                "?240=E52PWPA%23ACJ&422=156"
+            ),
+        )
+        self.assertIsNone(_serial_number_from_qr_payload("https://example.test/label/1N4635067J"))
+
+    def test_qr_cross_check_confirms_matching_printed_serial_number(self) -> None:
+        candidate = FieldCandidate(
+            field_name="SERIAL_NUMBER",
+            value="1N4635067J",
+            confidence=0.94,
+            status="DETECTED",
+            reason="A field-valid value was read beside the S/N label in its dedicated region.",
+        )
+
+        result = _cross_check_serial_with_qr(
+            candidate,
+            "https;//hpsmart.com/QRC/I0B/01/885981339727/21/1N4635067J?240=E52PWPA%23ACJ",
+        )
+
+        self.assertEqual("DETECTED", result.status)
+        self.assertEqual("1N4635067J", result.value)
+        self.assertIn("matched", result.reason)
+
+    def test_phone_image_serial_ocr_is_resolved_by_qr_despite_brackets_and_j3_confusion(self) -> None:
+        field = ConfiguredField(field_name="SERIAL_NUMBER", display_name="S/N")
+        qr_payload = (
+            "https;//hpsmart.com/QRC/I0B/01/885981339727/21/1N4635067J"
+            "?240=E52PWPA%23ACJ"
+        )
+        provider = _FixedProvider([
+            OCRLine(text="S/N [_1N46350673_] Pio", confidence=0.717),
+        ])
+
+        candidate, _ = _extract_co_labeled_value(
+            field,
+            np.full((1024, 768, 3), 255, dtype=np.uint8),
+            provider,
+            "serialnumber",
+            qr_payload,
+        )
+
+        self.assertEqual("DETECTED", candidate.status)
+        self.assertEqual("1N4635067J", candidate.value)
+        self.assertEqual(0.717, candidate.confidence)
+        self.assertIn("cross-checked", candidate.reason)
+
+    def test_qr_decoder_uses_zxing_fallback_when_opencv_cannot_decode(self) -> None:
+        payload = "https://example.test/label/1N4635067J?240=E52PWPA%23ACJ"
+        qr = cv2.QRCodeEncoder_create().encode(payload)
+        qr = cv2.resize(qr, (240, 240), interpolation=cv2.INTER_NEAREST)
+        image = np.full((1000, 1000, 3), 255, dtype=np.uint8)
+        image[30:270, 650:890] = cv2.cvtColor(qr, cv2.COLOR_GRAY2BGR)
+
+        with patch("app.services.ocr_service.cv2.QRCodeDetector") as detector_factory:
+            detector = detector_factory.return_value
+            detector.detectAndDecode.return_value = ("", None, None)
+            detector.detectAndDecodeMulti.return_value = (False, (), (), None)
+            candidate = _extract_co_qr(
+                ConfiguredField(field_name="QR_CODE", display_name="QR Code"),
+                image,
+            )
+
+        self.assertEqual("DETECTED", candidate.status)
+        self.assertEqual(payload, candidate.value)
+
+    def test_qr_cross_check_requires_review_for_conflicting_serial_number(self) -> None:
+        candidate = FieldCandidate(
+            field_name="SERIAL_NUMBER",
+            value="1N4635062D",
+            confidence=0.94,
+            status="DETECTED",
+            reason="A field-valid value was read beside the S/N label in its dedicated region.",
+        )
+
+        result = _cross_check_serial_with_qr(
+            candidate,
+            "https;//hpsmart.com/QRC/I0B/01/885981339727/21/1N4635067J?240=E52PWPA%23ACJ",
+        )
+
+        self.assertEqual("AMBIGUOUS", result.status)
+        self.assertIsNone(result.value)
+        self.assertIn("does not match", result.reason)
+
+    def test_qr_cross_check_requires_decoded_qr_serial_for_s_n(self) -> None:
+        candidate = FieldCandidate(
+            field_name="SERIAL_NUMBER",
+            value="1N4635067J",
+            confidence=0.94,
+            status="DETECTED",
+            reason="A field-valid value was read beside the S/N label in its dedicated region.",
+        )
+
+        result = _cross_check_serial_with_qr(candidate, None)
+
+        self.assertEqual("AMBIGUOUS", result.status)
+        self.assertIsNone(result.value)
+        self.assertIn("could not be cross-checked", result.reason)
+
+    def test_co_extraction_marks_serial_ambiguous_when_it_conflicts_with_qr(self) -> None:
+        fields = [
+            ConfiguredField(field_name="SERIAL_NUMBER", display_name="S/N"),
+            ConfiguredField(field_name="PART_NUMBER", display_name="P/N"),
+            ConfiguredField(field_name="MODEL_NO", display_name="Model No."),
+            ConfiguredField(field_name="QR_CODE", display_name="QR Code"),
+        ]
+        provider = _FixedProvider([
+            OCRLine(text="HP Laptop 15-fd1654TU", confidence=0.99),
+            OCRLine(text="S/N 1N4635062D", confidence=0.99),
+            OCRLine(text="P/N E52PWPA#ACJ", confidence=0.99),
+        ])
+        qr_payload = (
+            "https;//hpsmart.com/QRC/I0B/01/885981339727/21/1N4635067J"
+            "?240=E52PWPA%23ACJ"
+        )
+
+        with patch("app.services.ocr_service.cv2.QRCodeDetector") as detector_factory:
+            detector = detector_factory.return_value
+            detector.detectAndDecode.return_value = (qr_payload, None, None)
+            detector.detectAndDecodeMulti.return_value = (False, (), (), None)
+            candidates, _ = OCRService(provider)._extract_co_fields(
+                np.full((1000, 1200, 3), 255, dtype=np.uint8),
+                fields,
+            )
+
+        serial_candidate = next(candidate for candidate in candidates if candidate.field_name == "SERIAL_NUMBER")
+        self.assertEqual("AMBIGUOUS", serial_candidate.status)
+        self.assertIsNone(serial_candidate.value)
+        self.assertIn("does not match", serial_candidate.reason)
+
     def test_co_extraction_does_not_guess_values_from_unrelated_label_text(self) -> None:
         fields = [
             ConfiguredField(field_name="SERIAL_NUMBER", display_name="S/N"),

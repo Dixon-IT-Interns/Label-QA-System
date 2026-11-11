@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
-  Bell,
+  ArrowUpRight,
   Boxes,
   ClipboardCheck,
   FileStack,
@@ -48,88 +48,64 @@ function NavigationLink({ item, onNavigate }) {
 }
 
 function AppLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const location = useLocation()
   const { isAuthenticated, user, logout } = useAuth()
   const isAdmin = user?.role === 'Admin'
-  const currentPath = location.pathname === '/' ? 'Overview' : 'Workspace'
-
-  const closeSidebar = () => setSidebarOpen(false)
+  const closeMenu = () => setMenuOpen(false)
+  const currentPath = location.pathname === '/' ? 'Dashboard' : 'LabelVerify'
 
   return (
     <div className="app-shell">
       <button
-        aria-label="Close navigation"
-        className={`mobile-overlay${sidebarOpen ? ' is-visible' : ''}`}
-        onClick={closeSidebar}
+        aria-label="Close menu"
+        className={`mobile-overlay${menuOpen ? ' is-visible' : ''}`}
+        onClick={closeMenu}
         type="button"
       />
-      <aside className={`sidebar${sidebarOpen ? ' is-open' : ''}`}>
+      <header className="topbar">
         <div className="brand-lockup">
-          <div className="brand-mark"><ShieldCheck size={20} strokeWidth={2.2} /></div>
-          <div>
+          <NavLink aria-label="LabelVerify dashboard" className="brand-home" onClick={closeMenu} to="/">
+            <div className="brand-mark"><ShieldCheck size={19} strokeWidth={2.2} /></div>
             <div className="brand-name">LabelVerify</div>
-            <span className="brand-caption">Manufacturing QA</span>
-          </div>
+          </NavLink>
         </div>
-
-        <div className="nav-section-label">Workspace</div>
-        <ul className="nav-list">
-          {primaryNavigation.map((item) => (
-            <NavigationLink item={item} key={item.to} onNavigate={closeSidebar} />
-          ))}
-        </ul>
-
-        {isAdmin && <>
-          <div className="nav-section-label">Configuration</div>
+        <button
+          aria-expanded={menuOpen}
+          aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          className="icon-button menu-toggle"
+          onClick={() => setMenuOpen((open) => !open)}
+          type="button"
+        >
+          {menuOpen ? <X size={18} /> : <Menu size={18} />}
+        </button>
+        <nav aria-label="Main navigation" className={`main-navigation${menuOpen ? ' is-open' : ''}`}>
           <ul className="nav-list">
-            {configurationNavigation.map((item) => (
-              <NavigationLink item={item} key={item.to} onNavigate={closeSidebar} />
+            {primaryNavigation.map((item) => (
+              <NavigationLink item={item} key={item.to} onNavigate={closeMenu} />
             ))}
+            {isAdmin && configurationNavigation.map((item) => (
+              <NavigationLink item={item} key={item.to} onNavigate={closeMenu} />
+            ))}
+            {isAdmin && <NavigationLink item={{ to: '/users', label: 'Users', icon: UserRoundCog }} onNavigate={closeMenu} />}
+            {isAdmin && <NavigationLink item={{ to: '/settings', label: 'Settings', icon: Settings }} onNavigate={closeMenu} />}
           </ul>
-          <div className="nav-section-label">Administration</div>
-          <ul className="nav-list">
-            <NavigationLink item={{ to: '/users', label: 'User management', icon: UserRoundCog }} onNavigate={closeSidebar} />
-            <NavigationLink item={{ to: '/settings', label: 'System settings', icon: Settings }} onNavigate={closeSidebar} />
-          </ul>
-        </>}
-
-        <div className="sidebar-footer">
-          <div className="user-avatar">{isAuthenticated ? user?.fullName?.slice(0, 2) : '?'}</div>
-          <div>
-            <div className="user-name">{isAuthenticated ? user?.fullName : 'Signed-out session'}</div>
-            <div className="user-role">{isAuthenticated ? user?.role : 'Authentication not configured'}</div>
-          </div>
-          {isAuthenticated && <button aria-label="Sign out" className="icon-button" onClick={logout} title="Sign out" type="button"><LogOut color="#8c96a6" size={16} /></button>}
-        </div>
-      </aside>
-
-      <div className="main-shell">
-        <header className="topbar">
-          <div className="topbar-left">
-            <button
-              aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
-              className="icon-button menu-toggle"
-              onClick={() => setSidebarOpen((open) => !open)}
-              type="button"
-            >
-              {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
-            </button>
-            <div className="topbar-title"><strong>{currentPath}</strong> / Label verification</div>
-          </div>
-          <div className="topbar-actions">
-            <span className="status-pill status-muted">Environment: {import.meta.env.MODE}</span>
-            <div className="topbar-divider" />
-            <button aria-label="Notifications" className="icon-button" type="button">
-              <Bell size={16} strokeWidth={1.8} />
-            </button>
+        </nav>
+        <div className="topbar-actions">
+          <span className="environment-tag"><span />{import.meta.env.MODE}</span>
+          <div className="user-menu">
             <div className="user-avatar">{isAuthenticated ? user?.fullName?.slice(0, 2) : '?'}</div>
+            <div className="user-menu-copy">
+              <strong>{isAuthenticated ? user?.fullName : 'Signed-out session'}</strong>
+              <span>{isAuthenticated ? user?.role : 'Authentication not configured'}</span>
+            </div>
+            {isAuthenticated && <button aria-label="Sign out" className="icon-button signout-button" onClick={logout} title="Sign out" type="button"><LogOut size={15} /><span>Sign out</span><ArrowUpRight className="signout-arrow" size={12} /></button>}
           </div>
-        </header>
-        <main className="content-wrap">
-          <Outlet />
-        </main>
-      </div>
+        </div>
+      </header>
+      <main className="content-wrap" data-page={currentPath}>
+        <Outlet />
+      </main>
     </div>
   )
 }

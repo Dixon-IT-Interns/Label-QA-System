@@ -1,4 +1,7 @@
 :root {
-  --blue: #3a63c7;
-  --line: #e9edf3;
+  --ink: #171715;
+  --muted: #77766f;
+  --line: #e6e5e0;
+  --surface: #fff;
+  --canvas: #f7f7f5;
 }
