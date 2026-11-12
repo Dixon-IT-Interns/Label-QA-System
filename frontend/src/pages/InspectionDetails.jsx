@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, ClipboardCheck, FileImage, Pencil, Save, XCircle } from 'lucide-react'
+import { AlertCircle, ClipboardCheck, FileDown, FileImage, Pencil, Save, XCircle } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import EmptyState from '../components/EmptyState.jsx'
 import PageHeader from '../components/PageHeader.jsx'
@@ -168,22 +168,26 @@ function InspectionDetails() {
   const item = details.inspection
   const canCancel = ['READY', 'REVIEW_REQUIRED', 'BLOCKED', 'ERROR'].includes(item.status)
   const orderedImages = Object.keys(imageTitles).map((type) => details.images.find((image) => image.imageType === type)).filter(Boolean)
+  const actualCoFields = details.ocrResults
+    .find((result) => result.imageType === 'ACTUAL_CO')
+    ?.extractedFields.filter((field) => coFieldKeys.has(field.fieldKey)) ?? []
 
   return (
     <>
       <PageHeader
         description={`${item.brandName} · ${item.modelName} · created ${new Date(item.createdAtUtc).toLocaleString()}`}
         eyebrow={item.inspectionNumber}
-        title="Inspection details"
+        title="Inspection result"
         actions={<>
-          <button className="button button-secondary" disabled={reportBusy || ['READY', 'PROCESSING'].includes(item.status)} onClick={() => void downloadReport()} type="button">
-            {reportBusy ? 'Generating…' : 'Download PDF report'}
-          </button>
           {canCancel && <button className="button button-secondary" disabled={busy} onClick={() => void cancel()} type="button"><XCircle size={14} /> Cancel inspection</button>}
         </>}
       />
       {error && <div className="configuration-alert" role="alert">{error}</div>}
       {notice && <div className="configuration-notice" role="status">{notice}</div>}
+      <section className={`inspection-result-banner result-${String(item.status).toLowerCase()}`}>
+        <div><div className="eyebrow">Final verification</div><h2>{String(item.status).replaceAll('_', ' ')}</h2><p>{details.finalRemarks || 'The inspection result is based on the saved OCR evidence and configured field comparisons.'}</p></div>
+        <div className="result-mark"><StatusPill status={item.status} /><span>{item.inspectionNumber}</span></div>
+      </section>
       <section className="panel inspection-detail-summary">
         <div><span>Overall status</span><StatusPill status={item.status} /></div>
         <div><span>CO status</span><StatusPill status={item.coStatus} /></div>
@@ -193,6 +197,33 @@ function InspectionDetails() {
         <div><span>Work order</span><strong>{item.workOrderNumber || '—'}</strong></div>
         <div><span>CO profile version</span><strong>{details.labelProfileCOVersion ? `v${details.labelProfileCOVersion}` : '—'}</strong></div>
         <div><span>Config profile version</span><strong>{details.labelProfileConfigVersion ? `v${details.labelProfileConfigVersion}` : '—'}</strong></div>
+      </section>
+
+      {actualCoFields.length > 0 && <section aria-label="Extracted values from actual CO label" className="panel co-extracted-summary">
+        <header className="panel-header"><div><div className="eyebrow">Actual CO label</div><h2 className="panel-title">Key extracted values</h2></div></header>
+        <div className="co-extracted-grid">{actualCoFields.map((field) => (
+          <div className="co-extracted-value" key={field.fieldKey}>
+            <span>{displayFieldName(field.fieldKey)}</span>
+            <strong>{field.fieldKey === 'QR_CODE' ? (field.extractedValue ? 'Detected' : 'Not detected') : field.extractedValue || 'Unreadable'}</strong>
+          </div>
+        ))}</div>
+      </section>}
+
+      <section aria-label="Inspection PDF report" className="inspection-report-card">
+        <div className="report-card-icon"><FileDown size={20} /></div>
+        <div className="report-card-copy">
+          <div className="eyebrow">Inspection document</div>
+          <h2>Download the QA report</h2>
+          <p>PDF with the final result, Master and Actual label images, and field-by-field comparison evidence.</p>
+        </div>
+        <button
+          className="button button-primary"
+          disabled={reportBusy || ['READY', 'PROCESSING'].includes(item.status)}
+          onClick={() => void downloadReport()}
+          type="button"
+        >
+          <FileDown size={15} /> {reportBusy ? 'Generating report…' : 'Download PDF'}
+        </button>
       </section>
 
       {details.finalRemarks && <div className="callout inspection-detail-callout"><AlertCircle size={16} /><span>{details.finalRemarks}</span></div>}
@@ -260,7 +291,7 @@ function InspectionDetails() {
                 : stage.comparisons).length > 0 && <div className="table-wrap"><table className="data-table"><thead><tr><th>Field</th><th>{stage.stageType === 'SERIAL_VALIDATION' ? 'CO actual' : 'Master'}</th><th>{stage.stageType === 'SERIAL_VALIDATION' ? 'CONFIG actual' : 'Actual'}</th><th>Strategy</th><th>Result</th><th>Reason</th></tr></thead><tbody>
                 {(stage.stageType === 'CO_COMPARISON'
                   ? stage.comparisons.filter((comparison) => coFieldKeys.has(comparison.fieldKey))
-                  : stage.comparisons).map((comparison) => <tr key={comparison.fieldKey}>
+                  : stage.comparisons).map((comparison) => <tr className={`comparison-row-${String(comparison.status).toLowerCase()}`} key={comparison.fieldKey}>
                   <td>{displayFieldName(comparison.fieldKey)}</td>
                   <td>{comparison.masterValue ?? 'Unreadable'}{comparison.normalizedMasterValue && <small className="table-secondary">Normalized: {comparison.normalizedMasterValue}</small>}</td>
                   <td>{comparison.actualValue ?? 'Unreadable'}{comparison.normalizedActualValue && <small className="table-secondary">Normalized: {comparison.normalizedActualValue}</small>}</td>

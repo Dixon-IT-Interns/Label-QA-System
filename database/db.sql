@@ -510,7 +510,11 @@ BEGIN TRY
          OCRConfidenceThreshold, DisplayOrder, IsActive, ComparisonStrategy,
          NumericAbsoluteTolerance, NumericRelativeTolerance, CreatedAtUtc)
     SELECT NEWID(), profile.Id, field.FieldKey, field.DisplayName, N'Text', 1, 1,
-           0.55,
+           CASE
+               WHEN field.FieldKey = N'SERIAL_NUMBER' THEN 0.45
+               WHEN field.FieldKey = N'MODEL_NO' THEN 0.55
+               ELSE 0.65
+           END,
            field.DisplayOrder, 1,
            CASE WHEN field.FieldKey = N'MODEL_NO' THEN N'CaseInsensitive' ELSE N'Exact' END,
            0, 0, SYSUTCDATETIME()
@@ -537,7 +541,12 @@ BEGIN TRY
            definition.DataType = N'Text',
            definition.IsRequired = 1,
            definition.IsCritical = 1,
-           definition.OCRConfidenceThreshold = 0.55,
+           definition.OCRConfidenceThreshold =
+               CASE
+                   WHEN field.FieldKey = N'SERIAL_NUMBER' THEN 0.45
+                   WHEN field.FieldKey = N'MODEL_NO' THEN 0.55
+                   ELSE 0.65
+               END,
            definition.DisplayOrder = field.DisplayOrder,
            definition.IsActive = 1,
            definition.ComparisonStrategy =
@@ -701,8 +710,15 @@ BEGIN TRY
 
     IF NOT EXISTS (SELECT 1 FROM dbo.SystemSettings WHERE SettingKey = N'OcrMinimumConfidence')
         INSERT dbo.SystemSettings(Id, SettingKey, SettingValue, Description, UpdatedAtUtc)
-        VALUES ('73A3F07D-C906-4E49-A3DB-4854AB1A9D21', N'OcrMinimumConfidence', N'0.85',
+        VALUES ('73A3F07D-C906-4E49-A3DB-4854AB1A9D21', N'OcrMinimumConfidence', N'0.65',
             N'Minimum OCR confidence required before configured field values can be compared.', '2025-01-01T00:00:00+00:00');
+    ELSE IF EXISTS (
+        SELECT 1 FROM dbo.SystemSettings
+        WHERE SettingKey = N'OcrMinimumConfidence' AND SettingValue = N'0.85')
+        UPDATE dbo.SystemSettings
+           SET SettingValue = N'0.65',
+               UpdatedAtUtc = SYSUTCDATETIME()
+         WHERE SettingKey = N'OcrMinimumConfidence' AND SettingValue = N'0.85';
     IF NOT EXISTS (SELECT 1 FROM dbo.SystemSettings WHERE SettingKey = N'InspectionStatuses')
         INSERT dbo.SystemSettings(Id, SettingKey, SettingValue, Description, UpdatedAtUtc)
         VALUES ('73A3F07D-C906-4E49-A3DB-4854AB1A9D22', N'InspectionStatuses',

@@ -91,6 +91,8 @@ function NewInspection() {
     && imageSlots.every(({ type }) => uploadedImages.some((image) => image.imageType === type))
     && Object.keys(files).length === 0
     && !busy
+  const allImagesUploaded = imageSlots.every(({ type }) => uploadedImages.some((image) => image.imageType === type))
+  const verificationFinished = ['PASS', 'FAIL', 'REVIEW_REQUIRED', 'ERROR'].includes(inspection?.inspection.status)
 
   async function chooseFile(type, file) {
     setError('')
@@ -297,16 +299,22 @@ function NewInspection() {
   return (
     <>
       <PageHeader
-        description="Select the configured model and upload all four label images from this computer."
-        eyebrow="Inspection workflow"
-        title="New inspection"
+        description="Set up the inspection, add the four label images, then run verification against the active profiles."
+        eyebrow="New inspection"
+        title="A clear path to verification."
       />
       {error && <div className="configuration-alert" role="alert">{error}</div>}
-      {notice && <div className="inspection-notice" role="status">{notice}{inspection && <> · <Link to={`/inspections/${inspection.inspection.id}`}>Open details</Link></>}</div>}
+      {notice && <div className={`inspection-notice${busy ? ' is-working' : ''}`} role="status">{notice}{inspection && <> · <Link to={`/inspections/${inspection.inspection.id}`}>Open details</Link></>}</div>}
+
+      <ol aria-label="Inspection workflow steps" className="workflow-steps">
+        <li className={inspection ? 'is-complete' : 'is-current'}><span>01</span><div><strong>Setup</strong><small>Model &amp; orders</small></div></li>
+        <li className={allImagesUploaded ? 'is-complete' : inspection ? 'is-current' : ''}><span>02</span><div><strong>Label images</strong><small>Master &amp; actual</small></div></li>
+        <li className={verificationFinished ? 'is-complete' : canStart ? 'is-current' : ''}><span>03</span><div><strong>Verification</strong><small>OCR &amp; comparison</small></div></li>
+      </ol>
 
       <form className="panel configuration-form inspection-form" onSubmit={saveInspection}>
         <header className="panel-header">
-          <div><h2 className="panel-title">Inspection setup</h2><p className="panel-subtitle">Choose an active brand/model pair with current CO and CONFIG profiles.</p></div>
+          <div><div className="eyebrow">01 / Inspection setup</div><h2 className="panel-title">Define the inspection</h2><p className="panel-subtitle">Choose an active brand/model pair with current CO and CONFIG profiles.</p></div>
         </header>
         <div className="inspection-metadata">
           <label className="form-field"><span>Brand</span>
@@ -325,6 +333,7 @@ function NewInspection() {
           <label className="form-field"><span>Work order number</span><input disabled={Boolean(inspection)} maxLength="100" onChange={(event) => setForm({ ...form, workOrderNumber: event.target.value })} value={form.workOrderNumber} /></label>
         </div>
         {form.modelId && (!hasCoProfile || !hasConfigProfile) && <div className="configuration-alert" role="alert">This model needs one active CO and one active CONFIG profile before an inspection can be created.</div>}
+        <div className="upload-section-heading"><div><div className="eyebrow">02 / Label images</div><h2>Bring both references into focus.</h2><p>Upload a Master and Actual image for the CO label and device configuration.</p></div><span className="upload-count">{uploadedImages.length + Object.keys(files).filter((type) => !uploadedImages.some((image) => image.imageType === type)).length} / 4 ready</span></div>
         <div className="inspection-upload-grid">
           {imageSlots.map(({ type, title, description }) => {
             const selected = files[type]
@@ -341,10 +350,10 @@ function NewInspection() {
                   type="file"
                 />
                 <div className="inspection-upload-heading"><FileImage size={18} /><div><strong>{title}</strong><small>{description}</small></div></div>
-                {previewUrl ? <img alt={`${title} preview`} className="inspection-image-preview" src={previewUrl} /> : <div className="inspection-image-placeholder"><Upload size={23} /><span>JPEG or PNG · up to 20 MB</span></div>}
+                {previewUrl ? <img alt={`${title} preview`} className="inspection-image-preview" src={previewUrl} /> : <div className="inspection-image-placeholder"><Upload size={23} /><strong>Select a label image</strong><span>JPEG or PNG · up to 20 MB</span></div>}
                 <div className="inspection-file-meta">
                   {selected ? <span>{selected.file.name} · {(selected.file.size / 1024 / 1024).toFixed(2)} MB</span>
-                    : uploaded ? <span><Check size={14} /> {uploaded.originalFileName}</span>
+                    : uploaded ? <span><Check size={14} /> {uploaded.originalFileName} · {(uploaded.fileSizeBytes / 1024 / 1024).toFixed(2)} MB</span>
                       : <span>Image required</span>}
                 </div>
                 {uploadProgress[type] > 0 && uploadProgress[type] < 100 && <div className="inspection-upload-progress" role="status"><progress max="100" value={uploadProgress[type]} /><span>{uploadProgress[type]}%</span></div>}

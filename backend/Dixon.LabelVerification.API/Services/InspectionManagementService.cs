@@ -936,46 +936,92 @@ public sealed class InspectionManagementService(
                 stopwatch.ElapsedMilliseconds);
             return finalAssessment.Status;
         }
-        catch (Exception exception) when (
-            exception is HttpRequestException or IOException or InspectionProcessingException or JsonException
-                or TaskCanceledException or UnauthorizedAccessException
-            && !cancellationToken.IsCancellationRequested)
+        catch (Exception exception)
         {
             logger.LogError(
                 exception,
-                "PROCESS_FAILED inspectionId={InspectionId} stage={Stage} processStartRowVersion={RowVersion}",
-                inspectionId, "OCR_OR_COMPARISON", Convert.ToHexString(inspection.RowVersion));
-            var failedInspection = await db.InspectionSessions
-                .SingleOrDefaultAsync(x => x.Id == inspectionId, cancellationToken)
-                ?? throw new InspectionNotFoundException($"Inspection '{inspectionId}' was not found.");
-            job.Status = "FAILED";
-            job.LastError = exception.Message.Length > 2000 ? exception.Message[..2000] : exception.Message;
-            job.CompletedAtUtc = DateTimeOffset.UtcNow;
-            if (failedInspection.Status == InspectionStatus.PROCESSING)
+                "PROCESS_FAILED inspectionId={InspectionId} stage={Stage} processStartRowVersion={RowVersion} exceptionType={ExceptionType}",
+                inspectionId, "OCR_OR_COMPARISON", Convert.ToHexString(inspection.RowVersion),
+                exception.GetType().Name);
+            try
             {
-                failedInspection.Status = InspectionStatus.ERROR;
-                failedInspection.ProcessingDurationMs = stopwatch.ElapsedMilliseconds;
-                failedInspection.CompletedAtUtc = null;
-                failedInspection.FinalRemarks = "Processing could not complete; the inspection requires retry or manual review.";
+                await SaveFailedProcessStateAsync(
+                    inspectionId, operatorUserId, ipAddress, exception, stopwatch.ElapsedMilliseconds);
             }
-            else
+            catch (Exception stateSaveException)
             {
-                logger.LogWarning(
-                    "PROCESS_FAILED_STATE_CHANGED inspectionId={InspectionId} currentStatus={CurrentStatus} currentRowVersion={RowVersion}",
-                    inspectionId, failedInspection.Status, Convert.ToHexString(failedInspection.RowVersion));
+                logger.LogError(
+                    stateSaveException,
+                    "PROCESS_FAILED_STATE_SAVE_FAILED inspectionId={InspectionId} originalExceptionType={OriginalExceptionType}",
+                    inspectionId, exception.GetType().Name);
             }
-            db.InspectionLogs.Add(new InspectionLog
-            {
-                InspectionSessionId = inspectionId,
-                UserAccountId = operatorUserId,
-                EventType = "PROCESSING_FAILED",
-                Details = exception.Message,
-                IPAddress = ipAddress
-            });
-            await SaveProcessChangesAsync(
-                "PROCESS_FAILED_STATE_SAVE", inspectionId, failedInspection.Status, cancellationToken);
+
+            if ((exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
+                || exception is InspectionConflictException
+                || exception is InspectionNotFoundException)
+                throw;
+
             throw new InspectionProcessingException("OCR processing failed. The saved inspection remains available for retry.", exception);
         }
+    }
+
+    private async Task SaveFailedProcessStateAsync(
+        Guid inspectionId,
+        Guid operatorUserId,
+        string? ipAddress,
+        Exception exception,
+        long processingDurationMs)
+    {
+        using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var cleanupToken = cleanupTimeout.Token;
+        db.ChangeTracker.Clear();
+
+        var failedInspection = await db.InspectionSessions
+            .SingleOrDefaultAsync(x => x.Id == inspectionId, cleanupToken)
+            ?? throw new InspectionNotFoundException($"Inspection '{inspectionId}' was not found.");
+        var job = await db.InspectionProcessingJobs
+            .SingleOrDefaultAsync(x => x.InspectionSessionId == inspectionId, cleanupToken)
+            ?? throw new InspectionProcessingException("The inspection processing job record is unavailable.");
+        var stateChanged = false;
+        var now = DateTimeOffset.UtcNow;
+
+        if (job.Status == "PROCESSING")
+        {
+            job.Status = "FAILED";
+            job.LastError = exception.Message.Length > 2000 ? exception.Message[..2000] : exception.Message;
+            job.CompletedAtUtc = now;
+            stateChanged = true;
+        }
+
+        if (failedInspection.Status == InspectionStatus.PROCESSING)
+        {
+            failedInspection.Status = InspectionStatus.ERROR;
+            failedInspection.ProcessingDurationMs = processingDurationMs;
+            failedInspection.CompletedAtUtc = null;
+            failedInspection.FinalRemarks = "Processing could not complete; the inspection requires retry or manual review.";
+            stateChanged = true;
+        }
+
+        if (!stateChanged)
+        {
+            logger.LogWarning(
+                "PROCESS_FAILED_STATE_ALREADY_TERMINAL inspectionId={InspectionId} inspectionStatus={InspectionStatus} jobStatus={JobStatus}",
+                inspectionId, failedInspection.Status, job.Status);
+            return;
+        }
+
+        db.InspectionLogs.Add(new InspectionLog
+        {
+            InspectionSessionId = inspectionId,
+            UserAccountId = operatorUserId,
+            EventType = "PROCESSING_FAILED",
+            Details = exception.Message.Length > 2000 ? exception.Message[..2000] : exception.Message,
+            IPAddress = ipAddress
+        });
+        await db.SaveChangesAsync(cleanupToken);
+        logger.LogInformation(
+            "PROCESS_FAILED_STATE_SAVE_SUCCESS inspectionId={InspectionId} inspectionStatus={InspectionStatus} jobStatus={JobStatus}",
+            inspectionId, failedInspection.Status, job.Status);
     }
 
     private async Task SaveProcessChangesAsync(

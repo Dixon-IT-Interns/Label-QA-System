@@ -38,9 +38,9 @@ function Settings() {
     {error && <div className="configuration-alert" role="alert">{error}</div>}
     {notice && <div className="configuration-notice" role="status">{notice}</div>}
     <section className="panel">
-      <header className="panel-header"><div><h2 className="panel-title"><SettingsIcon size={16} /> Inspection processing</h2><p className="panel-subtitle">Values below this threshold are treated as unreadable and cannot produce a pass.</p></div></header>
+      <header className="panel-header"><div><h2 className="panel-title"><SettingsIcon size={16} /> Inspection processing</h2><p className="panel-subtitle">The global threshold applies only to fields without a profile-specific threshold.</p></div></header>
       <form className="configuration-form settings-form" onSubmit={submit}>
-        <label className="form-field"><span>Minimum global OCR confidence</span><input disabled={loading} max="1" min="0" onChange={(event) => setConfidence(event.target.value)} required step="0.01" type="number" value={confidence} /><small>Range 0.00–1.00. The stricter value of this and each profile field threshold is applied.</small></label>
+        <label className="form-field"><span>Minimum global OCR confidence</span><input disabled={loading} max="1" min="0" onChange={(event) => setConfidence(event.target.value)} required step="0.01" type="number" value={confidence} /><small>Range 0.00–1.00. This applies when a profile field does not set its own threshold; otherwise the profile field threshold is used.</small></label>
         <div className="form-actions"><button className="button button-primary" disabled={loading || saving} type="submit"><Save size={14} />{saving ? 'Saving…' : 'Save settings'}</button></div>
       </form>
     </section>
