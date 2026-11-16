@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, Check, FileImage, LoaderCircle, Trash2, Upload } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Camera, Check, ChevronDown, CircleHelp, FileImage, LoaderCircle, Trash2, Upload } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
-import PageHeader from '../components/PageHeader.jsx'
 import {
   createInspection,
   deleteInspectionImage,
@@ -27,8 +26,10 @@ function NewInspection() {
   const [brands, setBrands] = useState([])
   const [models, setModels] = useState([])
   const [profiles, setProfiles] = useState([])
-  const [form, setForm] = useState({ brandId: '', modelId: '', productionOrderNumber: '', workOrderNumber: '' })
+  const [form, setForm] = useState({ brandId: '', modelId: '' })
   const [files, setFiles] = useState({})
+  const [stage, setStage] = useState(1)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [uploadedImages, setUploadedImages] = useState([])
   const [inspection, setInspection] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -40,6 +41,7 @@ function NewInspection() {
   const saveInProgress = useRef(false)
   const processInProgress = useRef(false)
   const fileInputRefs = useRef({})
+  const cameraInputRefs = useRef({})
   const fileUrls = useRef(new Set())
   const uploadedPreviewUrls = useRef(new Set())
   const validationRequest = useRef(null)
@@ -86,13 +88,14 @@ function NewInspection() {
   const hasConfigProfile = activeProfiles.some((profile) => profile.labelType === 'CONFIG')
   const missingImageTypes = imageSlots.filter(({ type }) =>
     !files[type] && !uploadedImages.some((image) => image.imageType === type))
+  const readyImageCount = imageSlots.length - missingImageTypes.length
+  const allImagesReady = readyImageCount === imageSlots.length
   const canStart = Boolean(inspection)
     && ['READY', 'ERROR'].includes(inspection.inspection.status)
     && imageSlots.every(({ type }) => uploadedImages.some((image) => image.imageType === type))
     && Object.keys(files).length === 0
     && !busy
   const allImagesUploaded = imageSlots.every(({ type }) => uploadedImages.some((image) => image.imageType === type))
-  const verificationFinished = ['PASS', 'FAIL', 'REVIEW_REQUIRED', 'ERROR'].includes(inspection?.inspection.status)
 
   async function chooseFile(type, file) {
     setError('')
@@ -119,6 +122,7 @@ function NewInspection() {
 
     const url = URL.createObjectURL(file)
     fileUrls.current.add(url)
+    setStage(1)
     setFiles((current) => {
       const previous = current[type]
       if (previous?.url) {
@@ -131,6 +135,7 @@ function NewInspection() {
 
   async function removeImage(type) {
     setError('')
+    setStage(1)
     const existing = uploadedImages.find((image) => image.imageType === type)
     if (existing && inspection) {
       setBusy(true)
@@ -167,9 +172,22 @@ function NewInspection() {
     })
   }
 
-  async function saveInspection(event) {
-    event.preventDefault()
+  async function saveInspection() {
     if (saveInProgress.current) return
+    if (!form.brandId || !form.modelId) {
+      setDetailsOpen(true)
+      setError('Choose a brand and laptop model in Inspection details before continuing.')
+      return
+    }
+    if (!hasCoProfile || !hasConfigProfile) {
+      setDetailsOpen(true)
+      setError('The selected model needs active CO and CONFIG profiles before an inspection can be created.')
+      return
+    }
+    if (!allImagesReady) {
+      setError('Upload or capture all four required images before continuing.')
+      return
+    }
     saveInProgress.current = true
     setBusy(true)
     setError('')
@@ -180,8 +198,6 @@ function NewInspection() {
         saved = await createInspection({
           brandId: form.brandId,
           modelId: form.modelId,
-          productionOrderNumber: form.productionOrderNumber || null,
-          workOrderNumber: form.workOrderNumber || null,
         })
         setInspection(saved)
       }
@@ -235,6 +251,7 @@ function NewInspection() {
           : current)
       }
       setNotice(`Inspection ${saved.inspection.inspectionNumber} saved with ${images.length} of 4 images.`)
+      if (images.length === imageSlots.length) setStage(2)
     } catch (requestError) {
       setError(getInspectionErrorMessage(requestError))
     } finally {
@@ -243,25 +260,11 @@ function NewInspection() {
     }
   }
 
-  async function validateImages() {
-    if (!inspection || !imageSlots.every(({ type }) => uploadedImages.some((image) => image.imageType === type))) return
-    setBusy(true)
-    setError('')
-    setNotice('')
-    try {
-      await validateInspectionOnce(inspection.inspection.id)
-      setNotice('All four required images are present and validated.')
-    } catch (requestError) {
-      setError(getInspectionErrorMessage(requestError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   async function startVerification() {
     if (processInProgress.current || !canStart) return
     processInProgress.current = true
     setBusy(true)
+    setStage(3)
     setError('')
     setNotice('Checking the four uploaded images, then running OpenCV, Tesseract, and field comparison…')
     try {
@@ -272,6 +275,7 @@ function NewInspection() {
         .filter(({ type }) => !serverImages.some((image) => image.imageType === type))
         .map(({ title }) => title)
       if (missing.length > 0) {
+        setStage(2)
         setError(`Upload all four images before processing. Missing: ${missing.join(', ')}.`)
         setNotice('')
         return
@@ -283,6 +287,7 @@ function NewInspection() {
         : current)
       navigate(`/inspections/${inspectionId}`)
     } catch (requestError) {
+      setStage(2)
       if (requestError.response?.status === 502) {
         setInspection((current) => current
           ? { ...current, inspection: { ...current.inspection, status: 'ERROR' } }
@@ -297,43 +302,44 @@ function NewInspection() {
   }
 
   return (
-    <>
-      <PageHeader
-        description="Set up the inspection, add the four label images, then run verification against the active profiles."
-        eyebrow="New inspection"
-        title="A clear path to verification."
-      />
+    <section className="new-inspection-page">
+      <header className="new-inspection-heading">
+        <Link aria-label="Back to dashboard" className="new-inspection-back" to="/dashboard"><ArrowLeft size={17} /></Link>
+        <div><h1>New Inspection</h1><p>Upload or capture the four required label images</p></div>
+        <button aria-label="Inspection help" className="icon-button" title="Upload all four images: CO and configuration labels for both Master and Actual." type="button"><CircleHelp size={17} /></button>
+      </header>
       {error && <div className="configuration-alert" role="alert">{error}</div>}
       {notice && <div className={`inspection-notice${busy ? ' is-working' : ''}`} role="status">{notice}{inspection && <> · <Link to={`/inspections/${inspection.inspection.id}`}>Open details</Link></>}</div>}
 
-      <ol aria-label="Inspection workflow steps" className="workflow-steps">
-        <li className={inspection ? 'is-complete' : 'is-current'}><span>01</span><div><strong>Setup</strong><small>Model &amp; orders</small></div></li>
-        <li className={allImagesUploaded ? 'is-complete' : inspection ? 'is-current' : ''}><span>02</span><div><strong>Label images</strong><small>Master &amp; actual</small></div></li>
-        <li className={verificationFinished ? 'is-complete' : canStart ? 'is-current' : ''}><span>03</span><div><strong>Verification</strong><small>OCR &amp; comparison</small></div></li>
+      <ol aria-label="Inspection workflow steps" className="inspection-mobile-steps">
+        <li className={stage === 1 ? 'is-current' : 'is-complete'}><span>1</span><strong>Upload Images</strong></li>
+        <li className={stage === 2 ? 'is-current' : ''}><span>2</span><strong>Review</strong></li>
+        <li className={stage === 3 ? 'is-current' : ''}><span>3</span><strong>Result</strong></li>
       </ol>
 
-      <form className="panel configuration-form inspection-form" onSubmit={saveInspection}>
-        <header className="panel-header">
-          <div><div className="eyebrow">01 / Inspection setup</div><h2 className="panel-title">Define the inspection</h2><p className="panel-subtitle">Choose an active brand/model pair with current CO and CONFIG profiles.</p></div>
-        </header>
-        <div className="inspection-metadata">
-          <label className="form-field"><span>Brand</span>
-            <select disabled={loading || Boolean(inspection)} onChange={(event) => setForm({ ...form, brandId: event.target.value, modelId: '' })} required value={form.brandId}>
-              <option value="">Select a brand</option>
-              {brands.filter((brand) => brand.isActive).map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
-            </select>
-          </label>
-          <label className="form-field"><span>Laptop model</span>
-            <select disabled={!form.brandId || Boolean(inspection)} onChange={(event) => setForm({ ...form, modelId: event.target.value })} required value={form.modelId}>
-              <option value="">Select a model</option>
-              {filteredModels.map((model) => <option key={model.id} value={model.id}>{model.name} ({model.code})</option>)}
-            </select>
-          </label>
-          <label className="form-field"><span>Production order number</span><input disabled={Boolean(inspection)} maxLength="100" onChange={(event) => setForm({ ...form, productionOrderNumber: event.target.value })} value={form.productionOrderNumber} /></label>
-          <label className="form-field"><span>Work order number</span><input disabled={Boolean(inspection)} maxLength="100" onChange={(event) => setForm({ ...form, workOrderNumber: event.target.value })} value={form.workOrderNumber} /></label>
-        </div>
+      {stage === 1 ? <form className="inspection-upload-flow" onSubmit={(event) => { event.preventDefault(); void saveInspection() }}>
+        <div className="inspection-upload-prompt"><AlertCircle size={16} /><span>Upload or capture all 4 images <small>(CO &amp; Config)</small></span><strong>{readyImageCount}/4</strong></div>
+        <section className="inspection-details-accordion">
+          <button aria-expanded={detailsOpen} className="inspection-details-toggle" onClick={() => setDetailsOpen((open) => !open)} type="button">
+            <span><strong>Inspection details</strong><small>{form.modelId ? filteredModels.find((model) => model.id === form.modelId)?.name : 'Select brand and model to continue'}</small></span>
+            <ChevronDown className={detailsOpen ? 'is-open' : ''} size={17} />
+          </button>
+          {detailsOpen && <div className="inspection-details-fields">
+            <label className="form-field"><span>Brand</span>
+              <select disabled={loading || Boolean(inspection)} onChange={(event) => setForm({ ...form, brandId: event.target.value, modelId: '' })} value={form.brandId}>
+                <option value="">Select a brand</option>
+                {brands.filter((brand) => brand.isActive).map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
+              </select>
+            </label>
+            <label className="form-field"><span>Laptop model</span>
+              <select disabled={!form.brandId || Boolean(inspection)} onChange={(event) => setForm({ ...form, modelId: event.target.value })} value={form.modelId}>
+                <option value="">Select a model</option>
+                {filteredModels.map((model) => <option key={model.id} value={model.id}>{model.name} ({model.code})</option>)}
+              </select>
+            </label>
+          </div>}
+        </section>
         {form.modelId && (!hasCoProfile || !hasConfigProfile) && <div className="configuration-alert" role="alert">This model needs one active CO and one active CONFIG profile before an inspection can be created.</div>}
-        <div className="upload-section-heading"><div><div className="eyebrow">02 / Label images</div><h2>Bring both references into focus.</h2><p>Upload a Master and Actual image for the CO label and device configuration.</p></div><span className="upload-count">{uploadedImages.length + Object.keys(files).filter((type) => !uploadedImages.some((image) => image.imageType === type)).length} / 4 ready</span></div>
         <div className="inspection-upload-grid">
           {imageSlots.map(({ type, title, description }) => {
             const selected = files[type]
@@ -349,40 +355,69 @@ function NewInspection() {
                   ref={(element) => { fileInputRefs.current[type] = element }}
                   type="file"
                 />
-                <div className="inspection-upload-heading"><FileImage size={18} /><div><strong>{title}</strong><small>{description}</small></div></div>
-                {previewUrl ? <img alt={`${title} preview`} className="inspection-image-preview" src={previewUrl} /> : <div className="inspection-image-placeholder"><Upload size={23} /><strong>Select a label image</strong><span>JPEG or PNG · up to 20 MB</span></div>}
+                <input
+                  accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                  aria-label={`Capture ${title} image`}
+                  capture="environment"
+                  className="visually-hidden"
+                  onChange={(event) => { void chooseFile(type, event.target.files?.[0]); event.target.value = '' }}
+                  ref={(element) => { cameraInputRefs.current[type] = element }}
+                  type="file"
+                />
+                <div className="inspection-upload-heading"><strong>{title}</strong><small>{description}</small></div>
+                {previewUrl ? <img alt={`${title} preview`} className="inspection-image-preview" src={previewUrl} /> : <div className="inspection-image-placeholder"><FileImage size={26} /><span>Image required</span></div>}
                 <div className="inspection-file-meta">
                   {selected ? <span>{selected.file.name} · {(selected.file.size / 1024 / 1024).toFixed(2)} MB</span>
                     : uploaded ? <span><Check size={14} /> {uploaded.originalFileName} · {(uploaded.fileSizeBytes / 1024 / 1024).toFixed(2)} MB</span>
-                      : <span>Image required</span>}
+                      : <span>Required</span>}
                 </div>
                 {uploadProgress[type] > 0 && uploadProgress[type] < 100 && <div className="inspection-upload-progress" role="status"><progress max="100" value={uploadProgress[type]} /><span>{uploadProgress[type]}%</span></div>}
                 <div className="inspection-card-actions">
-                  <button className="button button-secondary" disabled={busy || Boolean(inspection && inspection.inspection.status === 'PROCESSING')} onClick={() => fileInputRefs.current[type]?.click()} type="button">
-                    <Upload size={14} /> {selected || uploaded ? 'Replace image' : 'Browse local files'}
-                  </button>
+                  <button className="button button-secondary" disabled={busy || Boolean(inspection && inspection.inspection.status === 'PROCESSING')} onClick={() => fileInputRefs.current[type]?.click()} type="button"><Upload size={13} /> Upload</button>
+                  <button className="button button-secondary" disabled={busy || Boolean(inspection && inspection.inspection.status === 'PROCESSING')} onClick={() => cameraInputRefs.current[type]?.click()} type="button"><Camera size={13} /> Capture</button>
                   {(selected || uploaded) && <button aria-label={`Remove ${title} image`} className="icon-button danger-icon" disabled={busy} onClick={() => void removeImage(type)} type="button"><Trash2 size={15} /></button>}
                 </div>
               </article>
             )
           })}
         </div>
-        {!loading && brands.length === 0 && <div className="empty-state-description">No brands are configured. Add a brand, model, and active CO/CONFIG profiles first.</div>}
-        <div className="inspection-form-footer">
-          {inspection && <span>Reference: <strong>{inspection.inspection.inspectionNumber}</strong></span>}
-          <div>
-            {inspection && <button className="button button-secondary" disabled={busy || missingImageTypes.length > 0 || !canStart} onClick={() => void validateImages()} type="button">Validate images</button>}
-            {inspection && <button className="button button-primary" disabled={!canStart || busy} onClick={() => void startVerification()} type="button">
-              {busy ? <LoaderCircle className="spin" size={15} /> : null} {busy ? 'Processing 4 images…' : 'Process inspection'}
-            </button>}
-            <button className="button button-secondary" disabled={busy || loading || !form.modelId || !hasCoProfile || !hasConfigProfile || (!inspection && imageSlots.some(({ type }) => !files[type]))} type="submit">
-              {busy ? 'Saving…' : inspection ? 'Upload selected images' : 'Save inspection'}
-            </button>
-          </div>
+        {!loading && brands.length === 0 && <div className="configuration-alert" role="alert">No brands are configured. Add a brand, model, and active CO/CONFIG profiles first.</div>}
+        <footer className="inspection-continue-footer">
+          {inspection && <span>Inspection <strong>{inspection.inspection.inspectionNumber}</strong></span>}
+          <button className="button button-primary" disabled={busy || loading || !allImagesReady} type="submit">
+            {busy ? <LoaderCircle className="spin" size={15} /> : null} {busy ? 'Saving images…' : 'Continue'}
+          </button>
+        </footer>
+      </form> : stage === 3 ? <section aria-live="polite" className="inspection-processing panel">
+        <div className="inspection-processing-ring"><FileImage size={34} /></div>
+        <h2>Processing images…</h2>
+        <p>Running OCR and comparing the configured label fields. This may take a few seconds.</p>
+        <ol>
+          <li><span />Extracting text and barcodes</li>
+          <li><span />Comparing configured fields</li>
+          <li><span />Preparing inspection result</li>
+        </ol>
+      </section> : <section className="inspection-review panel">
+        <header><div><h2>Review images</h2><p>Make sure the correct label is shown in each image before processing.</p></div><span className="inspection-review-ready"><Check size={14} /> 4 images ready</span></header>
+        <div className="inspection-review-grid">
+          {imageSlots.map(({ type, title }) => {
+            const uploaded = uploadedImages.find((image) => image.imageType === type)
+            return <article key={type}>
+              <strong>{title}</strong>
+              {uploadedPreviews[uploaded?.id]
+                ? <img alt={`${title} preview`} src={uploadedPreviews[uploaded.id]} />
+                : <div className="inspection-review-placeholder"><FileImage size={24} /></div>}
+            </article>
+          })}
         </div>
-        {missingImageTypes.length > 0 && inspection && <div className="inspection-help"><AlertCircle size={14} /> Still required: {missingImageTypes.map((item) => item.title).join(', ')}</div>}
-      </form>
-    </>
+        <footer>
+          <button className="button button-secondary" disabled={busy} onClick={() => setStage(1)} type="button"><ArrowLeft size={14} /> Back to images</button>
+          <button className="button button-primary" disabled={!canStart || busy || !allImagesUploaded} onClick={() => void startVerification()} type="button">
+            {busy ? <LoaderCircle className="spin" size={15} /> : null} {busy ? 'Processing images…' : 'Start verification'}
+          </button>
+        </footer>
+      </section>}
+    </section>
   )
 }
 

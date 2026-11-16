@@ -12,26 +12,39 @@ import RequireAuth from './components/RequireAuth.jsx'
 import RequireRole from './components/RequireRole.jsx'
 import UserManagement from './pages/UserManagement.jsx'
 import Settings from './pages/Settings.jsx'
+import Welcome from './pages/Welcome.jsx'
+import ForgotPassword from './pages/ForgotPassword.jsx'
+import ResetPassword from './pages/ResetPassword.jsx'
+import SignUp from './pages/SignUp.jsx'
+import Profile from './pages/Profile.jsx'
 import './App.css'
 
 function App() {
   return (
     <Routes>
+      <Route path="/" element={<Welcome />} />
       <Route path="login" element={<Login />} />
+      <Route path="signup" element={<SignUp />} />
+      <Route path="forgot-password" element={<ForgotPassword />} />
+      <Route path="reset-password" element={<ResetPassword />} />
       <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-        <Route index element={<Dashboard />} />
-        <Route path="inspections/new" element={<NewInspection />} />
+        <Route path="dashboard" element={<Dashboard />} />
         <Route path="inspections" element={<InspectionHistory />} />
         <Route path="inspections/:inspectionId" element={<InspectionDetails />} />
-        <Route path="brands" element={<BrandManagement />} />
-        <Route path="models" element={<ModelManagement />} />
-        <Route path="label-profiles" element={<LabelProfileManagement />} />
+        <Route path="profile" element={<Profile />} />
+        <Route element={<RequireRole roles={['Admin', 'Operator']} />}>
+          <Route path="inspections/new" element={<NewInspection />} />
+          <Route path="brands" element={<BrandManagement />} />
+          <Route path="models" element={<ModelManagement />} />
+          <Route path="label-profiles" element={<LabelProfileManagement />} />
+        </Route>
         <Route element={<RequireRole role="Admin" />}>
           <Route path="users" element={<UserManagement />} />
           <Route path="settings" element={<Settings />} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

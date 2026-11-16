@@ -58,6 +58,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddSingleton<PasswordResetEmailSender>();
 builder.Services.AddScoped<IFieldComparisonService, FieldComparisonService>();
 builder.Services.AddScoped<IInspectionWorkflowService, InspectionWorkflowService>();
 builder.Services.AddScoped<IInspectionSessionRepository, InspectionSessionRepository>();

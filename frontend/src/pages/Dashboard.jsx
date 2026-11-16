@@ -1,14 +1,27 @@
 import { useEffect, useState } from 'react'
-import { Activity, ArrowRight, ClipboardList, Layers3, ScanLine, ShieldCheck } from 'lucide-react'
+import { ArrowRight, CheckCircle2, CircleX, Clock3, ClipboardList } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import dashboardBanner from '../assets/dashboard-banner.png'
 import EmptyState from '../components/EmptyState.jsx'
 import StatusPill from '../components/StatusPill.jsx'
+import useAuth from '../hooks/useAuth.js'
 import { getAdminErrorMessage, getDashboard } from '../services/adminApi.js'
+
+function formatInspectionDate(dateValue) {
+  return new Date(dateValue).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
 
 function Dashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const { user } = useAuth()
+  const canCreateInspection = user?.role === 'Admin' || user?.role === 'Operator'
 
   useEffect(() => {
     let active = true
@@ -18,57 +31,68 @@ function Dashboard() {
     return () => { active = false }
   }, [])
 
+  const firstName = user?.fullName?.trim().split(/\s+/)[0] || 'there'
+  const failedRate = data?.totalInspections
+    ? `${((data.failCount / data.totalInspections) * 100).toFixed(1)}% of inspections`
+    : 'Failed inspections'
   const metrics = [
-    { label: "Today's inspections", value: data?.inspectionsToday, note: 'Created since midnight UTC', icon: ClipboardList },
-    { label: 'Pass rate', value: data ? `${data.passRatePercent}%` : null, note: data ? `${data.passCount} inspections passed` : 'Available when dashboard data loads', icon: ShieldCheck },
-    { label: 'Review required', value: data?.reviewRequiredCount, note: 'Require operator attention', icon: Activity },
-    { label: 'Active profiles', value: data?.activeProfiles, note: 'Configured label references', icon: Layers3 },
+    { label: 'Total inspections', value: data?.totalInspections, note: 'All recorded inspections', icon: ClipboardList, tone: 'primary' },
+    { label: 'Pass rate', value: data ? `${data.passRatePercent}%` : null, note: data ? `${data.passCount} passed` : 'Overall results', icon: CheckCircle2, tone: 'success' },
+    { label: 'Failed', value: data?.failCount, note: data ? failedRate : 'Failed inspections', icon: CircleX, tone: 'danger' },
+    { label: 'Pending review', value: data?.reviewRequiredCount, note: 'Awaiting operator review', icon: Clock3, tone: 'neutral' },
   ]
 
-  return <>
-    <section className="dashboard-hero">
-      <div className="hero-copy">
-        <div className="eyebrow">Manufacturing QA platform</div>
-        <h1>Verify every CO label <span>with confidence.</span></h1>
-        <p>Extract critical label information, compare Master and Actual labels, and identify mismatches before production.</p>
-        <div className="hero-actions">
-          <Link className="button button-primary" to="/inspections/new">Start new inspection <ArrowRight size={15} /></Link>
-          <Link className="button button-hero-secondary" to="/inspections">View inspection history</Link>
-        </div>
-        <div className="hero-footnote"><span className="hero-live-dot" /> Precision capture · OCR extraction · Verified comparison</div>
+  return <section className="dashboard-page">
+    <header className="dashboard-welcome">
+      <div>
+        <h1>Hello, {firstName}</h1>
+        <p>Here&apos;s what&apos;s happening today</p>
       </div>
-      <div aria-hidden="true" className="hero-label-art">
-        <div className="hero-label-paper">
-          <div className="label-art-top"><span>QUALITY CONTROL</span><ScanLine size={17} /></div>
-          <div className="label-art-line label-art-line-long" />
-          <div className="label-art-line label-art-line-mid" />
-          <div className="label-art-code"><div className="decorative-qr">{Array.from({ length: 49 }, (_, index) => <i key={index} />)}</div><div className="label-art-barcode"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div>
-          <div className="label-art-confirm"><ShieldCheck size={16} /> Verification ready</div>
-        </div>
-        <span className="hero-art-index">LV / 01</span>
-      </div>
-    </section>
+      {canCreateInspection && <Link className="button button-primary" to="/inspections/new">New inspection <ArrowRight size={15} /></Link>}
+    </header>
+    <figure className="dashboard-banner-image">
+      <img alt="Manufacturing QA Platform banner with a QR code" src={dashboardBanner} />
+      {canCreateInspection && <Link
+        aria-label="Open New Inspection from the QR code"
+        className="dashboard-banner-qr-link"
+        to="/inspections/new"
+      />}
+    </figure>
     {error && <div className="configuration-alert" role="alert">{error}</div>}
-    <section aria-label="Inspection metrics" className="metric-grid">
-      {metrics.map(({ label, value, note, icon: Icon }) => <article className="panel metric-card" key={label}>
-        <div className="metric-card-top"><span className="metric-label">{label}</span><Icon size={17} strokeWidth={1.7} /></div>
-        <div className="metric-value">{loading ? '…' : value ?? '—'}</div><div className="metric-note">{note}</div>
+    <section aria-label="Inspection summary" className="dashboard-stat-grid">
+      {metrics.map(({ label, value, note, icon: Icon, tone }) => <article className={`panel dashboard-stat-card is-${tone}`} key={label}>
+        <div className="dashboard-stat-top"><span>{label}</span><Icon size={17} strokeWidth={1.8} /></div>
+        <strong>{loading ? '…' : value ?? '—'}</strong>
+        <small>{note}</small>
       </article>)}
     </section>
     <section className="panel dashboard-recent">
-      <header className="panel-header"><div><div className="eyebrow">Latest activity</div><h2 className="panel-title">Recent inspections</h2><p className="panel-subtitle">Most recent records from the inspection database</p></div>
-        <Link className="button button-secondary" to="/inspections">View all inspections <ArrowRight size={14} /></Link></header>
-      {loading ? <div className="configuration-loading" role="status">Loading inspection metrics…</div>
-        : data?.recentInspections?.length ? <div className="table-wrap"><table className="data-table">
-          <thead><tr><th>Inspection ID</th><th>Brand / model</th><th>Created</th><th>Overall result</th></tr></thead>
-          <tbody>{data.recentInspections.map((row) => <tr key={row.id}><td><Link className="table-link" to={`/inspections/${row.id}`}>{row.inspectionNumber}</Link></td>
-            <td>{row.brandName}<small className="table-secondary-cell">{row.modelName} · {row.modelNumber}</small></td>
-            <td>{new Date(row.createdAtUtc).toLocaleString()}</td><td><StatusPill status={row.status} /></td></tr>)}</tbody>
-        </table></div>
-        : <EmptyState description={error || 'No saved inspection records are available yet.'} title="No inspection records" />}
-      <footer className="dashboard-data-foot"><span>Inspection records are loaded live from your workspace.</span><span>{loading ? '—' : data?.totalInspections ?? '—'} total records</span></footer>
+      <header className="dashboard-section-heading">
+        <div><h2>Recent activity</h2><p>Your latest label inspections</p></div>
+        <Link to="/inspections">View all <ArrowRight size={14} /></Link>
+      </header>
+      {loading ? <div className="dashboard-list-message" role="status">Loading recent activity…</div>
+        : data?.recentInspections?.length ? <ul className="dashboard-activity-list">
+          {data.recentInspections.slice(0, 5).map((inspection) => {
+            const status = String(inspection.status ?? '').toLowerCase()
+            const isFail = status === 'fail'
+            const isReview = status === 'review_required'
+            const ActivityIcon = isFail ? CircleX : isReview ? Clock3 : CheckCircle2
+            const tone = isFail ? ' is-fail' : isReview ? ' is-review' : ''
+
+            return <li key={inspection.id}>
+              <span aria-hidden="true" className={`dashboard-activity-mark${tone}`}><ActivityIcon size={17} /></span>
+              <div className="dashboard-activity-copy">
+                <Link to={`/inspections/${inspection.id}`}>{inspection.inspectionNumber}</Link>
+                <span>{inspection.brandName} · {inspection.modelName} · {formatInspectionDate(inspection.createdAtUtc)}</span>
+              </div>
+              <StatusPill status={inspection.status} />
+            </li>
+          })}
+        </ul>
+          : <EmptyState description={error || 'Saved inspections will appear here.'} title="No recent activity" />}
     </section>
-  </>
+  </section>
 }
 
 export default Dashboard

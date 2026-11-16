@@ -73,9 +73,14 @@ Remove-Variable dbPassword, secureDbPassword, connection
 $env:Jwt__SigningKey = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
 $env:OCR__BaseUrl = "http://127.0.0.1:8000/"
 $env:Storage__InspectionDirectory = (Join-Path (Get-Location) "storage\inspections")
+$env:Frontend__BaseUrl = "http://localhost:5173"
 ```
 
 The checked-in settings identify the supplied SQL Server host, database, and username, but deliberately contain no password. The environment connection string above supplies it for this PowerShell process. Never put credentials in checked-in settings. The server requires encryption; `TrustServerCertificate=True` matches the provided connection dialog. Development generates a temporary signing key if none is configured, so tokens become invalid when the API restarts. Configure a persistent secret-managed JWT signing key for production.
+
+The public sign-up endpoint creates active Operator accounts. Google sign-in is limited to active users whose verified Google email already matches their account. To enable Google sign-in, set backend `Google__ClientId` and frontend `VITE_GOOGLE_CLIENT_ID` to the same Google OAuth web client ID. To enable password-reset email, configure `Smtp__Host`, `Smtp__Port` (typically `587`), `Smtp__UserName`, `Smtp__Password`, `Smtp__FromEmail`, and optionally `Smtp__FromName` / `Smtp__UseSsl` through environment variables or a secret store. Set `Frontend__BaseUrl` to the URL users open in their browser. Do not commit provider credentials.
+
+Re-run `database/db.sql` to add the password-reset token columns to an existing database before deploying these authentication endpoints.
 
 Bootstrap the first administrator once, after the SQL script has run. The bootstrap process refuses to run if any users already exist:
 
@@ -147,7 +152,7 @@ npm ci
 npm run dev
 ```
 
-Vite runs at `http://localhost:5173`. Copy `.env.example` to `.env.local` and set `VITE_API_BASE_URL` if the API is hosted elsewhere.
+Vite runs at `http://localhost:5173`. Copy `.env.example` to `.env.local` and set `VITE_API_BASE_URL` if the API is hosted elsewhere. Set `VITE_GOOGLE_CLIENT_ID` to the Google OAuth web client ID to enable the Google button.
 
 ## Inspection workflow
 
@@ -161,7 +166,7 @@ Brand/model/profile configuration and user/settings management require Admin. Co
 
 ## API route summary
 
-- `POST /api/auth/login`; `GET /api/auth/me`
+- `POST /api/auth/login`, `/api/auth/signup`, `/api/auth/google`, `/api/auth/forgot-password`, `/api/auth/reset-password`; `GET /api/auth/me`
 - `GET /api/dashboard`
 - `GET|POST /api/brands`; `GET|PUT|DELETE /api/brands/{id}`
 - `GET|POST /api/models`; `GET|PUT|DELETE /api/models/{id}`

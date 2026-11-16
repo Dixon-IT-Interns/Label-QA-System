@@ -6,11 +6,14 @@ import {
   ClipboardCheck,
   FileStack,
   Gauge,
+  History,
+  Home,
   Laptop,
   Menu,
   ScanLine,
   LogOut,
   ShieldCheck,
+  SlidersHorizontal,
   Settings,
   UserRoundCog,
   X,
@@ -18,7 +21,7 @@ import {
 import useAuth from '../hooks/useAuth.js'
 
 const primaryNavigation = [
-  { to: '/', label: 'Dashboard', icon: Gauge, end: true },
+  { to: '/dashboard', label: 'Dashboard', icon: Gauge, end: true },
   { to: '/inspections/new', label: 'New inspection', icon: ScanLine },
   { to: '/inspections', label: 'Inspection history', icon: ClipboardCheck },
 ]
@@ -52,8 +55,10 @@ function AppLayout() {
   const location = useLocation()
   const { isAuthenticated, user, logout } = useAuth()
   const isAdmin = user?.role === 'Admin'
+  const isViewer = user?.role === 'Viewer'
+  const canCreateInspection = user?.role === 'Admin' || user?.role === 'Operator'
   const closeMenu = () => setMenuOpen(false)
-  const currentPath = location.pathname === '/' ? 'Dashboard' : 'LabelVerify'
+  const currentPath = location.pathname === '/dashboard' ? 'Dashboard' : 'LabelVerify'
 
   return (
     <div className="app-shell">
@@ -65,7 +70,7 @@ function AppLayout() {
       />
       <header className="topbar">
         <div className="brand-lockup">
-          <NavLink aria-label="LabelVerify dashboard" className="brand-home" onClick={closeMenu} to="/">
+          <NavLink aria-label="LabelVerify dashboard" className="brand-home" onClick={closeMenu} to="/dashboard">
             <div className="brand-mark"><ShieldCheck size={19} strokeWidth={2.2} /></div>
             <div className="brand-name">LabelVerify</div>
           </NavLink>
@@ -81,9 +86,10 @@ function AppLayout() {
         </button>
         <nav aria-label="Main navigation" className={`main-navigation${menuOpen ? ' is-open' : ''}`}>
           <ul className="nav-list">
-            {primaryNavigation.map((item) => (
+            {primaryNavigation.filter((item) => canCreateInspection || item.to !== '/inspections/new').map((item) => (
               <NavigationLink item={item} key={item.to} onNavigate={closeMenu} />
             ))}
+            {isViewer && <NavigationLink item={{ to: '/profile', label: 'Profile', icon: UserRoundCog }} onNavigate={closeMenu} />}
             {isAdmin && configurationNavigation.map((item) => (
               <NavigationLink item={item} key={item.to} onNavigate={closeMenu} />
             ))}
@@ -106,6 +112,12 @@ function AppLayout() {
       <main className="content-wrap" data-page={currentPath}>
         <Outlet />
       </main>
+      <nav aria-label="Mobile navigation" className={`mobile-bottom-nav${isViewer ? ' is-viewer' : ''}`}>
+        <NavLink end className={({ isActive }) => `mobile-bottom-nav-link${isActive ? ' active' : ''}`} to="/dashboard"><Home size={17} /><span>Home</span></NavLink>
+        <NavLink end className={({ isActive }) => `mobile-bottom-nav-link${isActive ? ' active' : ''}`} to="/inspections"><History size={17} /><span>History</span></NavLink>
+        {!isViewer && <NavLink className={({ isActive }) => `mobile-bottom-nav-link${isActive ? ' active' : ''}`} to="/label-profiles"><SlidersHorizontal size={17} /><span>Config</span></NavLink>}
+        <NavLink className={({ isActive }) => `mobile-bottom-nav-link${isActive ? ' active' : ''}`} to="/profile"><UserRoundCog size={17} /><span>Profile</span></NavLink>
+      </nav>
     </div>
   )
 }

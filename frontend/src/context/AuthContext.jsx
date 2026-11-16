@@ -8,7 +8,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let active = true
-    if (!sessionStorage.getItem('accessToken')) {
+    if (!localStorage.getItem('accessToken') && !sessionStorage.getItem('accessToken')) {
       setIsLoading(false)
       return () => { active = false }
     }
@@ -16,6 +16,7 @@ export function AuthProvider({ children }) {
     apiClient.get('/api/auth/me')
       .then(({ data }) => { if (active) setUser(data) })
       .catch(() => {
+        localStorage.removeItem('accessToken')
         sessionStorage.removeItem('accessToken')
         if (active) setUser(null)
       })
@@ -23,14 +24,29 @@ export function AuthProvider({ children }) {
     return () => { active = false }
   }, [])
 
-  async function login(identifier, password) {
+  function setAccessToken(accessToken, rememberMe) {
+    localStorage.removeItem('accessToken')
+    sessionStorage.removeItem('accessToken')
+    const storage = rememberMe ? localStorage : sessionStorage
+    storage.setItem('accessToken', accessToken)
+  }
+
+  async function login(identifier, password, rememberMe = false) {
     const { data } = await apiClient.post('/api/auth/login', { identifier, password })
-    sessionStorage.setItem('accessToken', data.accessToken)
+    setAccessToken(data.accessToken, rememberMe)
+    setUser(data.user)
+    return data.user
+  }
+
+  async function loginWithGoogle(credential, rememberMe = false) {
+    const { data } = await apiClient.post('/api/auth/google', { credential })
+    setAccessToken(data.accessToken, rememberMe)
     setUser(data.user)
     return data.user
   }
 
   function logout() {
+    localStorage.removeItem('accessToken')
     sessionStorage.removeItem('accessToken')
     setUser(null)
   }
@@ -40,6 +56,7 @@ export function AuthProvider({ children }) {
     isLoading,
     user,
     login,
+    loginWithGoogle,
     logout,
   }), [isLoading, user])
 

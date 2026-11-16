@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { ClipboardList, Search } from 'lucide-react'
+import { ArrowRight, ClipboardList, Plus, Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import EmptyState from '../components/EmptyState.jsx'
 import PageHeader from '../components/PageHeader.jsx'
 import StatusPill from '../components/StatusPill.jsx'
+import useAuth from '../hooks/useAuth.js'
 import { getBrands, getModels } from '../services/configurationApi.js'
 import { getInspectionErrorMessage, getInspections } from '../services/inspectionApi.js'
 
@@ -13,6 +14,8 @@ const statuses = [
 ]
 
 function InspectionHistory() {
+  const { user } = useAuth()
+  const canCreateInspection = user?.role === 'Admin' || user?.role === 'Operator'
   const [brands, setBrands] = useState([])
   const [models, setModels] = useState([])
   const [rows, setRows] = useState([])
@@ -72,6 +75,7 @@ function InspectionHistory() {
         description="Search and review saved inspections, workflow stages, and audit history."
         eyebrow="Quality records"
         title="Inspection history"
+        actions={canCreateInspection && <Link className="button button-primary" to="/inspections/new"><Plus size={15} /> New inspection</Link>}
       />
       {error && <div className="configuration-alert" role="alert">{error}</div>}
       <section className="panel">
@@ -99,9 +103,25 @@ function InspectionHistory() {
           </select>
           <button className="button button-secondary" onClick={() => updateFilter('descending', !filters.descending)} type="button">{filters.descending ? 'Descending' : 'Ascending'}</button>
         </div>
+        <div aria-label="Quick status filters" className="history-status-filters">
+          {[['', 'All'], ['PASS', 'Pass'], ['FAIL', 'Fail'], ['REVIEW_REQUIRED', 'Review']].map(([status, label]) => (
+            <button aria-pressed={filters.status === status} className={filters.status === status ? 'active' : ''} key={status || 'all'} onClick={() => updateFilter('status', status)} type="button">{label}</button>
+          ))}
+        </div>
         {loading ? <div className="configuration-loading" role="status">Loading inspections…</div>
           : rows.length === 0 ? <EmptyState description={error || 'No saved inspection records match these filters.'} icon={ClipboardList} title="No inspections found" />
-            : <div className="table-wrap">
+            : <>
+              <div className="history-mobile-list">
+                {rows.map((row) => (
+                  <Link className="history-mobile-card" key={row.id} to={`/inspections/${row.id}`}>
+                    <div className="history-mobile-card-heading"><div><strong>{row.inspectionNumber}</strong><small>{new Date(row.createdAtUtc).toLocaleString()}</small></div><StatusPill status={row.status} /></div>
+                    <div className="history-mobile-product"><strong>{row.brandName}</strong><span>{row.modelName} · {row.modelNumber}</span></div>
+                    <div className="history-mobile-order"><span>Production order</span><strong>{row.productionOrderNumber || '—'}</strong></div>
+                    <div className="history-mobile-stages"><span>CO <StatusPill status={row.coStatus} /></span><span>Config <StatusPill status={row.configStatus} /></span><ArrowRight aria-hidden="true" size={16} /></div>
+                  </Link>
+                ))}
+              </div>
+              <div className="table-wrap history-desktop-table">
               <table className="data-table">
                 <thead><tr><th>Inspection</th><th>Brand / model</th><th>Production order</th><th>Started</th><th>CO</th><th>Config</th><th>Status</th></tr></thead>
                 <tbody>{rows.map((row) => (
@@ -116,7 +136,8 @@ function InspectionHistory() {
                   </tr>
                 ))}</tbody>
               </table>
-            </div>}
+              </div>
+            </>}
         <footer className="history-pagination">
           <span>Page {filters.page} of {pageCount}</span>
           <div><button className="button button-secondary" disabled={filters.page <= 1 || loading} onClick={() => updateFilter('page', filters.page - 1)} type="button">Previous</button>

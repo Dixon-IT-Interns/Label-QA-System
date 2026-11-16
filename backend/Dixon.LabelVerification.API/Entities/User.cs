@@ -7,6 +7,8 @@ public sealed class User : AuditedEntity
     public required string Email { get; set; }
     public required string PasswordHash { get; set; }
     public required string Role { get; set; }
+    public string? PasswordResetTokenHash { get; set; }
+    public DateTimeOffset? PasswordResetExpiresAtUtc { get; set; }
     public UserRole UserRole { get; set; } = null!;
     public bool IsActive { get; set; } = true;
     public DateTimeOffset? LastLoginAtUtc { get; set; }
