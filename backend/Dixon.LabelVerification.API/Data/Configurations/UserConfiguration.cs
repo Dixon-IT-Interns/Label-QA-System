@@ -15,6 +15,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         entity.Property(x => x.Email).HasMaxLength(256).IsRequired();
         entity.Property(x => x.PasswordHash).HasMaxLength(512).IsRequired();
         entity.Property(x => x.Role).HasMaxLength(20).IsRequired();
+        entity.Property(x => x.PasswordResetTokenHash).HasMaxLength(64);
         entity.HasIndex(x => x.Username).IsUnique();
         entity.HasIndex(x => x.Email).IsUnique();
         entity.HasOne(x => x.UserRole).WithMany(x => x.Users)

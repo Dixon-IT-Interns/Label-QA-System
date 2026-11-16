@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FileStack, Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import EmptyState from '../components/EmptyState.jsx'
 import Modal from '../components/Modal.jsx'
 import PageHeader from '../components/PageHeader.jsx'
+import useAuth from '../hooks/useAuth.js'
 import {
   deleteFieldDefinition,
   deleteLabelProfile,
@@ -43,6 +45,8 @@ const emptyField = {
 }
 
 function LabelProfileManagement() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'Admin'
   const [brands, setBrands] = useState([])
   const [models, setModels] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -52,6 +56,7 @@ function LabelProfileManagement() {
   const [fieldDialog, setFieldDialog] = useState(null)
   const [profileForm, setProfileForm] = useState(emptyProfile)
   const [fieldForm, setFieldForm] = useState(emptyField)
+  const [configTab, setConfigTab] = useState('profiles')
   const [loading, setLoading] = useState(true)
   const [fieldsLoading, setFieldsLoading] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -192,6 +197,7 @@ function LabelProfileManagement() {
       setProfileDialog(null)
       await loadConfiguration()
       setSelectedProfile(saved)
+      setConfigTab('fields')
     } catch (requestError) {
       setError(getApiErrorMessage(requestError))
     } finally {
@@ -256,17 +262,22 @@ function LabelProfileManagement() {
   return (
     <>
       <PageHeader
-        description="Configure CO and Config profiles, required fields, OCR aliases, and comparison rules."
+        description="Manage the label profiles and field rules used by inspections."
         eyebrow="Configuration"
-        title="Label profiles"
+        title="Configuration"
         actions={
-          <button className="button button-primary" disabled={activeBrands.length === 0} onClick={() => openProfileForm()} type="button">
+          isAdmin && <button className="button button-primary" disabled={activeBrands.length === 0} onClick={() => openProfileForm()} type="button">
             <Plus size={15} /> Add profile
           </button>
         }
       />
+      <nav aria-label="Configuration sections" className="configuration-tabs">
+        <button aria-pressed={configTab === 'profiles'} className={configTab === 'profiles' ? 'active' : ''} onClick={() => setConfigTab('profiles')} type="button">Profiles</button>
+        <button aria-pressed={configTab === 'fields'} className={configTab === 'fields' ? 'active' : ''} disabled={!selectedProfile} onClick={() => setConfigTab('fields')} type="button">Field mapping</button>
+        {isAdmin && <Link to="/settings">OCR settings</Link>}
+      </nav>
       {error && !profileDialog && !fieldDialog && <div className="configuration-alert" role="alert">{error}</div>}
-      <section className="panel">
+      {configTab === 'profiles' && <section className="panel">
         <header className="panel-header configuration-toolbar">
           <div>
             <h2 className="panel-title">Profiles</h2>
@@ -287,38 +298,38 @@ function LabelProfileManagement() {
         ) : (
           <div className="table-wrap">
             <table className="data-table">
-              <thead><tr><th>Profile</th><th>Brand / model</th><th>Label type</th><th>Version</th><th>Status</th><th /></tr></thead>
+              <thead><tr><th>Profile</th><th>Brand / model</th><th>Label type</th><th>Version</th><th>Status</th>{isAdmin && <th />}</tr></thead>
               <tbody>
                 {profiles.map((profile) => (
                   <tr className={selectedProfile?.id === profile.id ? 'selected-table-row' : ''} key={profile.id}>
                     <td>
-                      <button className="table-link" onClick={() => { setFieldsLoading(true); setSelectedProfile(profile) }} type="button">{profile.name}</button>
+                      <button className="table-link" onClick={() => { setFieldsLoading(true); setSelectedProfile(profile); setConfigTab('fields') }} type="button">{profile.name}</button>
                       <small className="table-secondary-cell">{profile.code}</small>
                     </td>
                     <td>{profile.brandName}<small className="table-secondary-cell">{profile.modelName ?? 'All models'}</small></td>
                     <td><span className="code-chip">{profile.labelType}</span></td>
                     <td>v{profile.version}</td>
                     <td><span className={`status-pill ${profile.isActive ? 'status-success' : 'status-muted'}`}>{profile.isActive ? 'Active' : 'Inactive'}</span></td>
-                    <td className="table-actions">
+                    {isAdmin && <td className="table-actions">
                       <button aria-label={`Edit ${profile.name}`} className="icon-button" disabled={busy} onClick={() => openProfileForm(profile)} type="button"><Pencil size={14} /></button>
                       <button aria-label={`Delete ${profile.name}`} className="icon-button danger-icon" disabled={busy} onClick={() => removeProfile(profile)} type="button"><Trash2 size={14} /></button>
-                    </td>
+                    </td>}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-      </section>
+      </section>}
 
-      {selectedProfile && (
+      {configTab === 'fields' && (selectedProfile ? (
         <section className="panel configuration-fields-panel">
           <header className="panel-header">
             <div>
               <h2 className="panel-title">{selectedProfile.name} fields</h2>
               <p className="panel-subtitle">{selectedProfile.labelType} · {selectedProfile.brandName}{selectedProfile.modelName ? ` / ${selectedProfile.modelName}` : ' / all models'}</p>
             </div>
-            <button className="button button-primary" onClick={() => openFieldForm()} type="button"><Plus size={15} /> Add field</button>
+            {isAdmin && <button className="button button-primary" onClick={() => openFieldForm()} type="button"><Plus size={15} /> Add field</button>}
           </header>
           {fieldsLoading ? (
             <div className="configuration-loading" role="status">Loading fields…</div>
@@ -329,7 +340,7 @@ function LabelProfileManagement() {
           ) : (
             <div className="table-wrap">
               <table className="data-table">
-                <thead><tr><th>Field</th><th>Rules</th><th>Comparison</th><th>Confidence</th><th>Aliases</th><th>Status</th><th /></tr></thead>
+                <thead><tr><th>Field</th><th>Rules</th><th>Comparison</th><th>Confidence</th><th>Aliases</th><th>Status</th>{isAdmin && <th />}</tr></thead>
                 <tbody>
                   {visibleFields.map((field) => (
                     <tr key={field.id}>
@@ -339,10 +350,10 @@ function LabelProfileManagement() {
                       <td>{Math.round(field.ocrConfidenceThreshold * 100)}%</td>
                       <td className="alias-list">{field.aliases.length ? field.aliases.map((alias) => alias.value).join(', ') : '—'}</td>
                       <td><span className={`status-pill ${field.isActive ? 'status-success' : 'status-muted'}`}>{field.isActive ? 'Active' : 'Inactive'}</span></td>
-                      <td className="table-actions">
+                      {isAdmin && <td className="table-actions">
                         <button aria-label={`Edit field ${field.displayName}`} className="icon-button" disabled={busy} onClick={() => openFieldForm(field)} type="button"><Pencil size={14} /></button>
                         <button aria-label={`Delete field ${field.displayName}`} className="icon-button danger-icon" disabled={busy} onClick={() => removeField(field)} type="button"><Trash2 size={14} /></button>
-                      </td>
+                      </td>}
                     </tr>
                   ))}
                 </tbody>
@@ -350,9 +361,9 @@ function LabelProfileManagement() {
             </div>
           )}
         </section>
-      )}
+      ) : <EmptyState description="Select a label profile to view its configured fields and comparison rules." icon={SlidersHorizontal} title="Choose a profile" />)}
 
-      {profileDialog && (
+      {profileDialog && isAdmin && (
         <Modal onClose={() => setProfileDialog(null)} title={profileDialog.id ? 'Edit label profile' : 'Add label profile'}>
           <form className="configuration-form" onSubmit={submitProfile}>
             <label className="form-field"><span>Brand</span>
@@ -387,7 +398,7 @@ function LabelProfileManagement() {
         </Modal>
       )}
 
-      {fieldDialog && selectedProfile && (
+      {fieldDialog && selectedProfile && isAdmin && (
         <Modal onClose={() => setFieldDialog(null)} title={fieldDialog.id ? 'Edit field definition' : 'Add field definition'} wide>
           <form className="configuration-form" onSubmit={submitField}>
             <div className="form-grid">

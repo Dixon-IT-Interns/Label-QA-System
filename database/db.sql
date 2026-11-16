@@ -56,6 +56,8 @@ BEGIN TRY
             Username nvarchar(100) NOT NULL,
             Email nvarchar(256) NOT NULL,
             PasswordHash nvarchar(512) NOT NULL,
+            PasswordResetTokenHash nvarchar(64) NULL,
+            PasswordResetExpiresAtUtc datetimeoffset(7) NULL,
             Role nvarchar(20) NOT NULL,
             IsActive bit NOT NULL CONSTRAINT DF_ApplicationUsers_IsActive DEFAULT (1),
             LastLoginAtUtc datetimeoffset(7) NULL,
@@ -68,6 +70,11 @@ BEGIN TRY
         CREATE UNIQUE INDEX IX_ApplicationUsers_Username ON dbo.ApplicationUsers(Username);
         CREATE UNIQUE INDEX IX_ApplicationUsers_Email ON dbo.ApplicationUsers(Email);
     END;
+
+    IF COL_LENGTH(N'dbo.ApplicationUsers', N'PasswordResetTokenHash') IS NULL
+        ALTER TABLE dbo.ApplicationUsers ADD PasswordResetTokenHash nvarchar(64) NULL;
+    IF COL_LENGTH(N'dbo.ApplicationUsers', N'PasswordResetExpiresAtUtc') IS NULL
+        ALTER TABLE dbo.ApplicationUsers ADD PasswordResetExpiresAtUtc datetimeoffset(7) NULL;
 
     IF OBJECT_ID(N'dbo.LaptopModels', N'U') IS NULL
     BEGIN

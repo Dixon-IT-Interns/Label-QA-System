@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, ClipboardCheck, FileDown, FileImage, Pencil, Save, XCircle } from 'lucide-react'
-import { useParams } from 'react-router-dom'
+import { AlertCircle, ArrowRight, CheckCircle2, ClipboardCheck, FileDown, FileImage, LoaderCircle, Pencil, Save, XCircle } from 'lucide-react'
+import { Link, useParams } from 'react-router-dom'
 import EmptyState from '../components/EmptyState.jsx'
 import PageHeader from '../components/PageHeader.jsx'
 import Modal from '../components/Modal.jsx'
 import StatusPill from '../components/StatusPill.jsx'
+import useAuth from '../hooks/useAuth.js'
 import {
   cancelInspection,
   correctInspectionField,
@@ -60,6 +61,7 @@ function parseOcrEvidence(json) {
 
 function InspectionDetails() {
   const { inspectionId } = useParams()
+  const { user } = useAuth()
   const [details, setDetails] = useState(null)
   const [imageUrls, setImageUrls] = useState({})
   const [loadedInspectionId, setLoadedInspectionId] = useState(null)
@@ -100,6 +102,28 @@ function InspectionDetails() {
       urls.forEach((url) => URL.revokeObjectURL(url))
     }
   }, [inspectionId, loadAttempt])
+
+  useEffect(() => {
+    if (details?.inspection.id !== inspectionId || details.inspection.status !== 'PROCESSING') return undefined
+    let active = true
+    let requestInProgress = false
+    const intervalId = window.setInterval(async () => {
+      if (requestInProgress) return
+      requestInProgress = true
+      try {
+        const latest = await getInspection(inspectionId)
+        if (active) setDetails(latest)
+      } catch (requestError) {
+        if (active) setError(getInspectionErrorMessage(requestError))
+      } finally {
+        requestInProgress = false
+      }
+    }, 2000)
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+    }
+  }, [details?.inspection.status, inspectionId])
 
   async function cancel() {
     if (!window.confirm('Cancel this inspection? The saved history and uploaded images will be retained.')) return
@@ -166,7 +190,23 @@ function InspectionDetails() {
   }
 
   const item = details.inspection
-  const canCancel = ['READY', 'REVIEW_REQUIRED', 'BLOCKED', 'ERROR'].includes(item.status)
+  const canModifyInspection = user?.role === 'Admin' || user?.role === 'Operator'
+  const canCancel = canModifyInspection && ['READY', 'REVIEW_REQUIRED', 'BLOCKED', 'ERROR'].includes(item.status)
+  const isPass = item.status === 'PASS'
+  const isFail = ['FAIL', 'ERROR', 'BLOCKED'].includes(item.status)
+  const isProcessing = item.status === 'PROCESSING'
+  const ResultIcon = isPass ? CheckCircle2 : isFail ? XCircle : isProcessing ? LoaderCircle : AlertCircle
+  const resultDescription = isPass
+    ? 'All configured label checks passed.'
+    : isFail
+      ? 'One or more checks need attention. Review the comparison evidence below.'
+      : item.status === 'REVIEW_REQUIRED'
+        ? 'Review the OCR evidence and flagged fields before accepting this inspection.'
+        : isProcessing
+          ? 'Label images are being processed. Refresh this page to see the latest result.'
+          : item.status === 'READY'
+            ? 'This inspection is saved and waiting to be processed.'
+            : details.finalRemarks || 'See the inspection evidence and status details below.'
   const orderedImages = Object.keys(imageTitles).map((type) => details.images.find((image) => image.imageType === type)).filter(Boolean)
   const actualCoFields = details.ocrResults
     .find((result) => result.imageType === 'ACTUAL_CO')
@@ -184,11 +224,21 @@ function InspectionDetails() {
       />
       {error && <div className="configuration-alert" role="alert">{error}</div>}
       {notice && <div className="configuration-notice" role="status">{notice}</div>}
-      <section className={`inspection-result-banner result-${String(item.status).toLowerCase()}`}>
-        <div><div className="eyebrow">Final verification</div><h2>{String(item.status).replaceAll('_', ' ')}</h2><p>{details.finalRemarks || 'The inspection result is based on the saved OCR evidence and configured field comparisons.'}</p></div>
-        <div className="result-mark"><StatusPill status={item.status} /><span>{item.inspectionNumber}</span></div>
+      <section aria-labelledby="inspection-result-title" className={`inspection-result-banner result-${String(item.status).toLowerCase()}`}>
+        <div className={`inspection-result-icon${isProcessing ? ' spin' : ''}`}><ResultIcon size={34} strokeWidth={1.8} /></div>
+        <div className="inspection-result-copy">
+          <div className="eyebrow">{isProcessing ? 'Inspection in progress' : isPass || isFail ? 'Final verification' : 'Inspection status'}</div>
+          <h2 id="inspection-result-title">{String(item.status).replaceAll('_', ' ')}</h2>
+          <p>{resultDescription}</p>
+          <div className="inspection-result-meta"><span><small>Inspection</small><strong>{item.inspectionNumber}</strong></span><span><small>Date</small><strong>{new Date(item.createdAtUtc).toLocaleDateString()}</strong></span></div>
+          <div className="inspection-result-actions">
+            <a className="button button-secondary" href="#inspection-summary">View details <ArrowRight size={14} /></a>
+            {canModifyInspection && <Link className="button button-primary" to="/inspections/new">New inspection</Link>}
+          </div>
+        </div>
+        <div className="result-mark"><StatusPill status={item.status} /></div>
       </section>
-      <section className="panel inspection-detail-summary">
+      <section className="panel inspection-detail-summary" id="inspection-summary">
         <div><span>Overall status</span><StatusPill status={item.status} /></div>
         <div><span>CO status</span><StatusPill status={item.coStatus} /></div>
         <div><span>Config status</span><StatusPill status={item.configStatus} /></div>
@@ -261,7 +311,7 @@ function InspectionDetails() {
                 {extractedFields.length > 0 && <div className="table-wrap"><table className="data-table"><thead><tr><th>Saved field</th><th>Value</th><th>Confidence</th><th>Correction</th><th /></tr></thead><tbody>
                   {extractedFields.map((field, index) => <tr key={`${field.fieldKey}-${index}`}><td>{displayFieldName(field.fieldKey)}</td><td>{field.extractedValue ?? 'Unreadable'}</td>
                     <td>{(field.confidence * 100).toFixed(0)}%</td><td>{field.isManuallyCorrected ? `Manual: ${field.correctionReason}` : 'OCR'}</td>
-                    <td>{field.fieldDefinitionId && ['REVIEW_REQUIRED', 'FAIL'].includes(item.status) && <button className="button button-secondary" onClick={() => setCorrection({
+                    <td>{canModifyInspection && field.fieldDefinitionId && ['REVIEW_REQUIRED', 'FAIL'].includes(item.status) && <button className="button button-secondary" onClick={() => setCorrection({
                       imageId: result.imageId,
                       fieldDefinitionId: field.fieldDefinitionId,
                       fieldKey: field.fieldKey,
