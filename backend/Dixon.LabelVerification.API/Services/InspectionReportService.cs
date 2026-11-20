@@ -16,14 +16,19 @@ public sealed class InspectionReportService(
     IWebHostEnvironment environment,
     ILogger<InspectionReportService> logger) : IInspectionReportService
 {
-    private readonly string _storageRoot = ResolveStorageRoot(configuration, environment);
+    private readonly string _storageRoot = InspectionStoragePaths.ResolveRoot(configuration, environment);
 
     public async Task<InspectionReportDownload> GenerateOrGetAsync(
         Guid inspectionId,
         Guid generatedByUserId,
+        bool isSupervisor,
         CancellationToken cancellationToken)
     {
-        var inspection = await db.InspectionSessions.AsNoTracking()
+        var inspections = db.InspectionSessions.AsNoTracking()
+            .Where(x => x.Id == inspectionId);
+        if (!isSupervisor)
+            inspections = inspections.Where(x => x.CreatedByUserId == generatedByUserId);
+        var inspection = await inspections
             .Include(x => x.Brand)
             .Include(x => x.Model)
             .Include(x => x.CreatedByUser)
@@ -123,25 +128,8 @@ public sealed class InspectionReportService(
         };
     }
 
-    private string ResolveStoredPath(string relativePath)
-    {
-        var fullPath = Path.GetFullPath(Path.Combine(_storageRoot, relativePath));
-        var prefix = _storageRoot.EndsWith(Path.DirectorySeparatorChar)
-            ? _storageRoot
-            : _storageRoot + Path.DirectorySeparatorChar;
-        if (!fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            throw new InspectionValidationException("The stored file path is invalid.");
-        return fullPath;
-    }
-
-    private static string ResolveStorageRoot(IConfiguration configuration, IWebHostEnvironment environment)
-    {
-        var configured = configuration["Storage:InspectionDirectory"];
-        var path = string.IsNullOrWhiteSpace(configured)
-            ? Path.Combine(environment.ContentRootPath, "..", "..", "storage", "inspections")
-            : Path.IsPathRooted(configured) ? configured : Path.Combine(environment.ContentRootPath, configured);
-        return Path.GetFullPath(path);
-    }
+    private string ResolveStoredPath(string relativePath) =>
+        InspectionStoragePaths.ResolvePath(_storageRoot, relativePath, "The stored file path is invalid.");
 
     private sealed record ReportImage(string Type, string FileName, byte[] Bytes);
     private sealed record ReportOcrLine(string ImageType, string Text, double Confidence);

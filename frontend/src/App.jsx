@@ -7,6 +7,7 @@ import InspectionDetails from './pages/InspectionDetails.jsx'
 import BrandManagement from './pages/BrandManagement.jsx'
 import ModelManagement from './pages/ModelManagement.jsx'
 import LabelProfileManagement from './pages/LabelProfileManagement.jsx'
+import MasterLabelManagement from './pages/MasterLabelManagement.jsx'
 import Login from './pages/Login.jsx'
 import RequireAuth from './components/RequireAuth.jsx'
 import RequireRole from './components/RequireRole.jsx'
@@ -15,7 +16,6 @@ import Settings from './pages/Settings.jsx'
 import Welcome from './pages/Welcome.jsx'
 import ForgotPassword from './pages/ForgotPassword.jsx'
 import ResetPassword from './pages/ResetPassword.jsx'
-import SignUp from './pages/SignUp.jsx'
 import Profile from './pages/Profile.jsx'
 import './App.css'
 
@@ -24,7 +24,6 @@ function App() {
     <Routes>
       <Route path="/" element={<Welcome />} />
       <Route path="login" element={<Login />} />
-      <Route path="signup" element={<SignUp />} />
       <Route path="forgot-password" element={<ForgotPassword />} />
       <Route path="reset-password" element={<ResetPassword />} />
       <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
@@ -32,13 +31,14 @@ function App() {
         <Route path="inspections" element={<InspectionHistory />} />
         <Route path="inspections/:inspectionId" element={<InspectionDetails />} />
         <Route path="profile" element={<Profile />} />
-        <Route element={<RequireRole roles={['Admin', 'Operator']} />}>
+        <Route element={<RequireRole roles={['Supervisor', 'Operator']} />}>
           <Route path="inspections/new" element={<NewInspection />} />
+        </Route>
+        <Route element={<RequireRole role="Supervisor" />}>
           <Route path="brands" element={<BrandManagement />} />
           <Route path="models" element={<ModelManagement />} />
           <Route path="label-profiles" element={<LabelProfileManagement />} />
-        </Route>
-        <Route element={<RequireRole role="Admin" />}>
+          <Route path="master-labels" element={<MasterLabelManagement />} />
           <Route path="users" element={<UserManagement />} />
           <Route path="settings" element={<Settings />} />
         </Route>

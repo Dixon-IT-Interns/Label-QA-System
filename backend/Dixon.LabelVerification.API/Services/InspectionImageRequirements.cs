@@ -12,6 +12,12 @@ public static class InspectionImageRequirements
         InspectionImageType.ACTUAL_CONFIG
     ];
 
+    public static IReadOnlyList<InspectionImageType> OperatorUploadTypes { get; } =
+    [
+        InspectionImageType.ACTUAL_CO,
+        InspectionImageType.ACTUAL_CONFIG
+    ];
+
     public static IReadOnlyList<InspectionImageType> GetMissingTypes(
         IEnumerable<InspectionImageType> uploadedTypes)
     {

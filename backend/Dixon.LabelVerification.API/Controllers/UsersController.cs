@@ -11,7 +11,7 @@ namespace Dixon.LabelVerification.API.Controllers;
 
 [ApiController]
 [Route("api/users")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = ApplicationRoles.Supervisor)]
 public sealed class UsersController(
     LabelVerificationDbContext db,
     IPasswordHasher<User> passwordHasher) : ControllerBase
@@ -19,19 +19,20 @@ public sealed class UsersController(
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<UserResponse>>> GetAll(CancellationToken cancellationToken) =>
         Ok(await db.Users.AsNoTracking().OrderBy(x => x.FullName)
-            .Select(x => new UserResponse(x.Id, x.FullName, x.Username, x.Email, x.Role, x.IsActive, x.LastLoginAtUtc))
+            .Select(x => new UserResponse(
+                x.Id, x.FullName, x.Username, x.Email, x.Role, x.IsActive, x.CreatedAtUtc, x.LastLoginAtUtc))
             .ToListAsync(cancellationToken));
 
     [HttpPost]
     public async Task<ActionResult<UserResponse>> Create(UserRequest request, CancellationToken cancellationToken)
     {
-        await EnsureUniqueAsync(request.Username, request.Email, request.Role, null, cancellationToken);
+        await EnsureUniqueAsync(request.Username, request.Email, null, cancellationToken);
         var user = new User
         {
             FullName = request.FullName.Trim(),
             Username = request.Username.Trim(),
             Email = request.Email.Trim(),
-            Role = request.Role,
+            Role = ApplicationRoles.Operator,
             PasswordHash = string.Empty,
             IsActive = request.IsActive
         };
@@ -49,15 +50,12 @@ public sealed class UsersController(
     {
         var user = await db.Users.SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"User '{id}' was not found.");
-        await EnsureUniqueAsync(request.Username, request.Email, request.Role, id, cancellationToken);
-        if (user.IsActive && user.Role == "Admin"
-            && (request.Role != "Admin" || !request.IsActive)
-            && !await db.Users.AnyAsync(x => x.Id != id && x.IsActive && x.Role == "Admin", cancellationToken))
-            throw new ConfigurationConflictException("The last active administrator cannot be deactivated or demoted.");
+        if (user.Role != ApplicationRoles.Operator)
+            throw new ConfigurationConflictException("Only Operator accounts can be edited here.");
+        await EnsureUniqueAsync(request.Username, request.Email, id, cancellationToken);
         user.FullName = request.FullName.Trim();
         user.Username = request.Username.Trim();
         user.Email = request.Email.Trim();
-        user.Role = request.Role;
         user.IsActive = request.IsActive;
         if (!string.IsNullOrWhiteSpace(request.Password))
             user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
@@ -66,17 +64,16 @@ public sealed class UsersController(
     }
 
     private async Task EnsureUniqueAsync(
-        string username, string email, string role, Guid? excludedId, CancellationToken cancellationToken)
+        string username, string email, Guid? excludedId, CancellationToken cancellationToken)
     {
         if (await db.Users.AnyAsync(x => x.Id != excludedId
             && (x.Username == username.Trim() || x.Email == email.Trim()), cancellationToken))
             throw new ConfigurationConflictException("Username or email is already in use.");
-        if (!await db.UserRoles.AnyAsync(x => x.Code == role, cancellationToken))
-            throw new ConfigurationConflictException("The selected role is not defined.");
     }
 
     private static UserResponse ToResponse(User user) =>
-        new(user.Id, user.FullName, user.Username, user.Email, user.Role, user.IsActive, user.LastLoginAtUtc);
+        new(user.Id, user.FullName, user.Username, user.Email, user.Role, user.IsActive,
+            user.CreatedAtUtc, user.LastLoginAtUtc);
 }
 
 public sealed class UserRequest
@@ -89,8 +86,6 @@ public sealed class UserRequest
     public string Email { get; init; } = string.Empty;
     [Required, StringLength(256, MinimumLength = 12)]
     public string? Password { get; init; }
-    [Required, RegularExpression("^(Admin|Operator|Viewer)$")]
-    public string Role { get; init; } = "Operator";
     public bool IsActive { get; init; } = true;
 }
 
@@ -104,10 +99,15 @@ public sealed class UpdateUserRequest
     public string Email { get; init; } = string.Empty;
     [StringLength(256, MinimumLength = 12)]
     public string? Password { get; init; }
-    [Required, RegularExpression("^(Admin|Operator|Viewer)$")]
-    public string Role { get; init; } = "Operator";
     public bool IsActive { get; init; } = true;
 }
 
 public sealed record UserResponse(
-    Guid Id, string FullName, string Username, string Email, string Role, bool IsActive, DateTimeOffset? LastLoginAtUtc);
+    Guid Id,
+    string FullName,
+    string Username,
+    string Email,
+    string Role,
+    bool IsActive,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? LastLoginAtUtc);

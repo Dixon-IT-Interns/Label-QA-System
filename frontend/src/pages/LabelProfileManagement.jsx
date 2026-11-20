@@ -46,7 +46,7 @@ const emptyField = {
 
 function LabelProfileManagement() {
   const { user } = useAuth()
-  const isAdmin = user?.role === 'Admin'
+  const isAdmin = user?.role === 'Supervisor'
   const [brands, setBrands] = useState([])
   const [models, setModels] = useState([])
   const [profiles, setProfiles] = useState([])

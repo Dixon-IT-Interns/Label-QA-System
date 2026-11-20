@@ -1,0 +1,55 @@
+{
+  "status": "completed",
+  "overallResult": "FAIL",
+  "inspectionId": "cb3cf544-4100-477c-9d73-6bee5c06a3cd",
+  "fields": [
+    {
+      "field": "SERIAL_NUMBER",
+      "master": null,
+      "actual": null,
+      "masterNormalized": null,
+      "actualNormalized": null,
+      "result": "REVIEW"
+    },
+    {
+      "field": "PART_NUMBER",
+      "master": "E52PYPA#ACJ",
+      "actual": "E52PYPA#ACJ",
+      "masterNormalized": "E52PYPA#ACJ",
+      "actualNormalized": "E52PYPA#ACJ",
+      "result": "PASS"
+    },
+    {
+      "field": "MODEL_NO",
+      "master": "HP Laptop 15-fd1652TU",
+      "actual": "HP Laptop 15-fd1652TU",
+      "masterNormalized": "HP LAPTOP 15-FD1652TU",
+      "actualNormalized": "HP LAPTOP 15-FD1652TU",
+      "result": "PASS"
+    },
+    {
+      "field": "QR_CODE",
+      "master": "https;//hpsmart.com/QRC/I0B/01/885981339741/21/1N46350HJ9?240=E52PYPA%23ACJ\u0026422=156",
+      "actual": "https;//hpsmart.com/QRC/I0B/01/885981339741/21/1N46350HJ9?240=E52PYPA%23ACJ\u0026422=156",
+      "masterNormalized": "https;//hpsmart.com/QRC/I0B/01/885981339741/21/1N46350HJ9?240=E52PYPA%23ACJ\u0026422=156",
+      "actualNormalized": "https;//hpsmart.com/QRC/I0B/01/885981339741/21/1N46350HJ9?240=E52PYPA%23ACJ\u0026422=156",
+      "result": "PASS"
+    },
+    {
+      "field": "MODEL_NO",
+      "master": "HP Laptop 15-fd1654TU",
+      "actual": "HP Laptop 15-fd1669TU",
+      "masterNormalized": "HP LAPTOP 15-FD1654TU",
+      "actualNormalized": "HP LAPTOP 15-FD1669TU",
+      "result": "FAIL"
+    },
+    {
+      "field": "QUEUE_NO",
+      "master": "E52PWPA#ACJ",
+      "actual": "E52PYPA#ACJ",
+      "masterNormalized": "E52PWPA#ACJ",
+      "actualNormalized": "E52PYPA#ACJ",
+      "result": "FAIL"
+    }
+  ]
+}

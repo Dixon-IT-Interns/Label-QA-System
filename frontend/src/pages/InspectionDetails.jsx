@@ -190,7 +190,7 @@ function InspectionDetails() {
   }
 
   const item = details.inspection
-  const canModifyInspection = user?.role === 'Admin' || user?.role === 'Operator'
+  const canModifyInspection = user?.role === 'Supervisor' || user?.role === 'Operator'
   const canCancel = canModifyInspection && ['READY', 'REVIEW_REQUIRED', 'BLOCKED', 'ERROR'].includes(item.status)
   const isPass = item.status === 'PASS'
   const isFail = ['FAIL', 'ERROR', 'BLOCKED'].includes(item.status)

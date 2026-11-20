@@ -291,6 +291,24 @@ class _FixedProvider(OCRProvider):
         )
 
 
+class _FullImagePartNumberProvider(OCRProvider):
+    @property
+    def name(self) -> str:
+        return "full-image-part-number-test-provider"
+
+    def extract(self, image: np.ndarray) -> OCRResult:
+        lines = (
+            [OCRLine(text="Part Number E52PWPA#ACJ", confidence=0.93)]
+            if image.shape[0] >= 1000
+            else []
+        )
+        return OCRResult(
+            version="test",
+            raw_text="\n".join(line.text for line in lines),
+            lines=lines,
+        )
+
+
 class _SequencedProvider(OCRProvider):
     def __init__(self, lines: list[list[OCRLine]]) -> None:
         self._lines = lines
@@ -438,6 +456,88 @@ class OCRServicePolicyTests(unittest.TestCase):
         self.assertEqual(0.717, candidate.confidence)
         self.assertIn("cross-checked", candidate.reason)
 
+    def test_co_part_number_is_extracted_from_decoded_qr_when_printed_value_is_unreadable(self) -> None:
+        field = ConfiguredField(field_name="PART_NUMBER", display_name="P/N")
+        qr_payload = "https://example.test/label/1N4635067J?240=E52PWPA%23ACJ"
+
+        candidate, _ = _extract_co_labeled_value(
+            field,
+            np.full((1024, 768, 3), 255, dtype=np.uint8),
+            _FixedProvider([]),
+            "partnumber",
+            qr_payload,
+        )
+
+        self.assertEqual("DETECTED", candidate.status)
+        self.assertEqual("E52PWPA#ACJ", candidate.value)
+        self.assertIn("QR payload", candidate.reason)
+
+    def test_co_part_number_recognizes_common_label_aliases(self) -> None:
+        field = ConfiguredField(
+            field_name="PART_NUMBER",
+            display_name="P/N",
+            aliases=["PN", "Part No", "Part Number"],
+        )
+
+        candidate, _ = _extract_co_labeled_value(
+            field,
+            np.full((1024, 768, 3), 255, dtype=np.uint8),
+            _FixedProvider([OCRLine(text="Part Number E52PWPA#ACJ", confidence=0.93)]),
+            "partnumber",
+        )
+
+        self.assertEqual("DETECTED", candidate.status)
+        self.assertEqual("E52PWPA#ACJ", candidate.value)
+
+    def test_co_part_number_uses_full_image_layout_when_fixed_region_misses(self) -> None:
+        field = ConfiguredField(
+            field_name="PART_NUMBER",
+            display_name="P/N",
+            aliases=["PN", "Part No", "Part Number"],
+        )
+
+        candidate, _ = _extract_co_labeled_value(
+            field,
+            np.full((1024, 768, 3), 255, dtype=np.uint8),
+            _FullImagePartNumberProvider(),
+            "partnumber",
+        )
+
+        self.assertEqual("DETECTED", candidate.status)
+        self.assertEqual("E52PWPA#ACJ", candidate.value)
+
+    def test_co_part_number_is_ambiguous_when_printed_value_conflicts_with_qr(self) -> None:
+        field = ConfiguredField(field_name="PART_NUMBER", display_name="P/N")
+        qr_payload = "https://example.test/label/1N4635067J?240=E52PWPA%23ACJ"
+
+        candidate, _ = _extract_co_labeled_value(
+            field,
+            np.full((1024, 768, 3), 255, dtype=np.uint8),
+            _FixedProvider([OCRLine(text="P/N E52PWPA#ACE", confidence=0.93)]),
+            "partnumber",
+            qr_payload,
+        )
+
+        self.assertEqual("AMBIGUOUS", candidate.status)
+        self.assertIsNone(candidate.value)
+        self.assertIn("do not match", candidate.reason)
+
+    def test_co_part_number_uses_qr_when_printed_readings_are_not_confident(self) -> None:
+        field = ConfiguredField(field_name="PART_NUMBER", display_name="P/N")
+        qr_payload = "https://example.test/label/1N4635067J?240=E52PWPA%23ACJ"
+
+        candidate, _ = _extract_co_labeled_value(
+            field,
+            np.full((1024, 768, 3), 255, dtype=np.uint8),
+            _FixedProvider([OCRLine(text="P/N E52PWPA#ACE", confidence=0.8)]),
+            "partnumber",
+            qr_payload,
+        )
+
+        self.assertEqual("DETECTED", candidate.status)
+        self.assertEqual("E52PWPA#ACJ", candidate.value)
+        self.assertIn("QR payload", candidate.reason)
+
     def test_qr_decoder_uses_zxing_fallback_when_opencv_cannot_decode(self) -> None:
         payload = "https://example.test/label/1N4635067J?240=E52PWPA%23ACJ"
         qr = cv2.QRCodeEncoder_create().encode(payload)
@@ -541,7 +641,7 @@ class OCRServicePolicyTests(unittest.TestCase):
             label_type="CO",
         )
 
-        self.assertEqual(["NOT_FOUND"] * 4, [candidate.status for candidate in response.field_candidates])
+        self.assertEqual(["NOT_FOUND"] * 3, [candidate.status for candidate in response.field_candidates])
         self.assertTrue(all(candidate.value is None for candidate in response.field_candidates))
         self.assertEqual("", response.raw_text)
         self.assertEqual([], response.lines)

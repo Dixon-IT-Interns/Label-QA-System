@@ -14,6 +14,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 builder.Logging.ClearProviders();
 builder.Logging.AddJsonConsole();
@@ -54,6 +55,27 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             NameClaimType = System.Security.Claims.ClaimTypes.Name,
             RoleClaimType = System.Security.Claims.ClaimTypes.Role
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var userIdValue = context.Principal?.FindFirst(
+                    System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var role = context.Principal?.FindFirst(
+                    System.Security.Claims.ClaimTypes.Role)?.Value;
+                if (!Guid.TryParse(userIdValue, out var userId) || !ApplicationRoles.IsValid(role))
+                {
+                    context.Fail("The account token is invalid.");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<LabelVerificationDbContext>();
+                var user = await db.Users.AsNoTracking()
+                    .SingleOrDefaultAsync(x => x.Id == userId, context.HttpContext.RequestAborted);
+                if (user is null || !user.IsActive || !string.Equals(user.Role, role, StringComparison.Ordinal))
+                    context.Fail("The account is inactive or its access has changed.");
+            }
+        };
     });
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
@@ -63,7 +85,9 @@ builder.Services.AddScoped<IFieldComparisonService, FieldComparisonService>();
 builder.Services.AddScoped<IInspectionWorkflowService, InspectionWorkflowService>();
 builder.Services.AddScoped<IInspectionSessionRepository, InspectionSessionRepository>();
 builder.Services.AddScoped<IInspectionManagementService, InspectionManagementService>();
+builder.Services.AddScoped<IMasterLabelService, MasterLabelService>();
 builder.Services.AddScoped<IInspectionReportService, InspectionReportService>();
+builder.Services.AddScoped<IInspectionAccessService, InspectionAccessService>();
 builder.Services.AddHostedService<InspectionJobRecoveryService>();
 builder.Services.AddScoped<IBrandConfigurationService, BrandConfigurationService>();
 builder.Services.AddScoped<IModelConfigurationService, ModelConfigurationService>();
@@ -105,7 +129,7 @@ if (args.Contains("--bootstrap-admin", StringComparer.Ordinal))
         || password.Length < 12)
     {
         throw new InvalidOperationException(
-            "Set BOOTSTRAP_ADMIN_FULL_NAME, BOOTSTRAP_ADMIN_USERNAME, BOOTSTRAP_ADMIN_EMAIL, and a 12+ character BOOTSTRAP_ADMIN_PASSWORD.");
+            "Set BOOTSTRAP_ADMIN_FULL_NAME, BOOTSTRAP_ADMIN_USERNAME, BOOTSTRAP_ADMIN_EMAIL, and a 12+ character BOOTSTRAP_ADMIN_PASSWORD to bootstrap the initial Supervisor.");
     }
 
     await using var scope = app.Services.CreateAsyncScope();
@@ -114,22 +138,22 @@ if (args.Contains("--bootstrap-admin", StringComparer.Ordinal))
     await using var transaction = await db.Database.BeginTransactionAsync(
         System.Data.IsolationLevel.Serializable);
     if (await db.Users.AnyAsync())
-        throw new InvalidOperationException("Administrator bootstrap is only allowed when no users exist.");
+        throw new InvalidOperationException("Supervisor bootstrap is only allowed when no users exist.");
 
-    var admin = new User
+    var supervisor = new User
     {
         FullName = fullName.Trim(),
         Username = username.Trim(),
         Email = email.Trim(),
-        Role = "Admin",
+        Role = ApplicationRoles.Supervisor,
         PasswordHash = string.Empty,
         IsActive = true
     };
-    admin.PasswordHash = passwordHasher.HashPassword(admin, password);
-    db.Users.Add(admin);
+    supervisor.PasswordHash = passwordHasher.HashPassword(supervisor, password);
+    db.Users.Add(supervisor);
     await db.SaveChangesAsync();
     await transaction.CommitAsync();
-    Console.WriteLine($"Initial administrator '{admin.Username}' created.");
+    Console.WriteLine($"Initial supervisor '{supervisor.Username}' created.");
     return;
 }
 

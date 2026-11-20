@@ -1,0 +1,61 @@
+@baseUrl = http://localhost:5200
+@token = replace-with-supervisor-jwt
+@brandId = 00000000-0000-0000-0000-000000000001
+@modelId = 00000000-0000-0000-0000-000000000002
+
+### Check whether an Operator's selected model has both master labels
+GET {{baseUrl}}/api/master-labels/availability/{{modelId}}
+Authorization: Bearer {{token}}
+
+### List all saved master labels (Supervisor only)
+GET {{baseUrl}}/api/master-labels
+Authorization: Bearer {{token}}
+
+### List master labels for one model (Supervisor only)
+GET {{baseUrl}}/api/master-labels/models/{{modelId}}
+Authorization: Bearer {{token}}
+
+### Upload or replace both master labels after pair validation (Supervisor only)
+PUT {{baseUrl}}/api/master-labels/{{modelId}}/pair
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=masterlabel
+
+--masterlabel
+Content-Disposition: form-data; name="brandId"
+
+{{brandId}}
+--masterlabel
+Content-Disposition: form-data; name="coFile"; filename="master-co.png"
+Content-Type: image/png
+
+< ./master-co.png
+--masterlabel
+Content-Disposition: form-data; name="configFile"; filename="master-config.png"
+Content-Type: image/png
+
+< ./master-config.png
+--masterlabel--
+
+### Detect an existing model or create it from a label image (Supervisor only)
+POST {{baseUrl}}/api/master-labels/detect-model
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=detectmodel
+
+--detectmodel
+Content-Disposition: form-data; name="brandId"
+
+{{brandId}}
+--detectmodel
+Content-Disposition: form-data; name="file"; filename="model-label.png"
+Content-Type: image/png
+
+< ./model-label.png
+--detectmodel--
+
+### View or download a saved master label image (Supervisor only)
+GET {{baseUrl}}/api/master-labels/{{modelId}}/CO/image
+Authorization: Bearer {{token}}
+
+### A missing model returns 404
+GET {{baseUrl}}/api/master-labels/models/00000000-0000-0000-0000-000000000099
+Authorization: Bearer {{token}}

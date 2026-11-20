@@ -67,6 +67,47 @@ public sealed class InspectionFoundationTests
     }
 
     [Fact]
+    public void OperatorsCanUploadOnlyActualLabelsAndMasterLabelsAreUniquePerModelAndType()
+    {
+        Assert.Equal(
+            [InspectionImageType.ACTUAL_CO, InspectionImageType.ACTUAL_CONFIG],
+            InspectionImageRequirements.OperatorUploadTypes);
+
+        using var db = CreateDbContext();
+        var masterLabel = db.Model.FindEntityType(typeof(MasterLabel))!;
+        var uniqueIndex = masterLabel.GetIndexes().Single(index => index.IsUnique
+            && index.Properties.Select(property => property.Name)
+                .SequenceEqual([nameof(MasterLabel.ModelId), nameof(MasterLabel.LabelType)]));
+        var modelForeignKey = masterLabel.GetForeignKeys()
+            .Single(key => key.PrincipalEntityType.ClrType == typeof(LaptopModel));
+
+        Assert.True(uniqueIndex.IsUnique);
+        Assert.Equal(
+            [nameof(MasterLabel.BrandId), nameof(MasterLabel.ModelId)],
+            modelForeignKey.Properties.Select(property => property.Name));
+    }
+
+    [Fact]
+    public void MasterLabelManagementWritesAreSupervisorOnly()
+    {
+        var controllerAuthorization = typeof(MasterLabelsController)
+            .GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>().Single();
+        var save = typeof(MasterLabelsController).GetMethod(nameof(MasterLabelsController.SavePair))!;
+        var saveAuthorization = save.GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>().Single();
+        var availability = typeof(MasterLabelsController)
+            .GetMethod(nameof(MasterLabelsController.GetAvailability))!;
+        var availabilityAuthorization = availability.GetCustomAttributes(
+                typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>().Single();
+
+        Assert.NotNull(controllerAuthorization);
+        Assert.Equal(ApplicationRoles.Supervisor, saveAuthorization.Roles);
+        Assert.Equal("Supervisor,Operator", availabilityAuthorization.Roles);
+    }
+
+    [Fact]
     public async Task ComparisonArtifactContainsFieldValuesAndFinalResult()
     {
         using var temporary = new TemporaryDirectory();
@@ -148,6 +189,27 @@ public sealed class InspectionFoundationTests
     }
 
     [Fact]
+    public async Task DatabaseConcurrencyConflictUsesRequestAgnosticMessage()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/master-labels/123/pair";
+        context.Response.Body = new MemoryStream();
+        var middleware = new GlobalExceptionMiddleware(
+            _ => Task.FromException(new DbUpdateConcurrencyException("Concurrency conflict.")),
+            NullLogger<GlobalExceptionMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+        context.Response.Body.Position = 0;
+        using var response = JsonDocument.Parse(context.Response.Body);
+        Assert.Equal(
+            "The data changed while this request was in progress. Refresh and retry.",
+            response.RootElement.GetProperty("title").GetString());
+        Assert.True(response.RootElement.TryGetProperty("conflictingEntities", out _));
+    }
+
+    [Fact]
     public void InspectionModelRelationshipIncludesBrandToPreventCrossBrandModels()
     {
         using var db = CreateDbContext();
@@ -188,7 +250,7 @@ public sealed class InspectionFoundationTests
         var imageDownload = typeof(InspectionsController).GetMethod(nameof(InspectionsController.GetImage))!;
 
         Assert.NotNull(controllerAuthorization);
-        Assert.Equal("Admin,Operator", authorization.Roles);
+        Assert.Equal("Supervisor,Operator", authorization.Roles);
         Assert.Empty(imageDownload.GetCustomAttributes(typeof(AllowAnonymousAttribute), true));
     }
 

@@ -1,4 +1,5 @@
 using Dixon.LabelVerification.API.DTOs.Configuration;
+using Dixon.LabelVerification.API.Entities;
 using Dixon.LabelVerification.API.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,7 +22,7 @@ public sealed class BrandsController(IBrandConfigurationService brandService) : 
         Ok(await brandService.GetByIdAsync(id, cancellationToken));
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(BrandResponse), StatusCodes.Status201Created)]
     public async Task<ActionResult<BrandResponse>> Create(
         BrandRequest request,
@@ -32,7 +33,7 @@ public sealed class BrandsController(IBrandConfigurationService brandService) : 
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(BrandResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<BrandResponse>> Update(
         Guid id,
@@ -41,7 +42,7 @@ public sealed class BrandsController(IBrandConfigurationService brandService) : 
         Ok(await brandService.UpdateAsync(id, request, cancellationToken));
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {

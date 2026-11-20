@@ -15,7 +15,7 @@ const statuses = [
 
 function InspectionHistory() {
   const { user } = useAuth()
-  const canCreateInspection = user?.role === 'Admin' || user?.role === 'Operator'
+  const canCreateInspection = user?.role === 'Supervisor' || user?.role === 'Operator'
   const [brands, setBrands] = useState([])
   const [models, setModels] = useState([])
   const [rows, setRows] = useState([])
@@ -80,7 +80,7 @@ function InspectionHistory() {
       {error && <div className="configuration-alert" role="alert">{error}</div>}
       <section className="panel">
         <header className="panel-header configuration-toolbar">
-          <div><h2 className="panel-title">All inspections</h2><p className="panel-subtitle">{total} record{total === 1 ? '' : 's'} · newest first</p></div>
+          <div><h2 className="panel-title">{user?.role === 'Supervisor' ? 'All inspections' : 'Your inspections'}</h2><p className="panel-subtitle">{total} record{total === 1 ? '' : 's'} · newest first</p></div>
           <label className="history-search">
             <Search aria-hidden="true" color="#98a1af" size={14} />
             <input aria-label="Search inspections" onChange={(event) => updateFilter('search', event.target.value)} placeholder="Inspection, order, work order, serial" value={filters.search} />

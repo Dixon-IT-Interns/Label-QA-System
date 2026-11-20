@@ -33,7 +33,7 @@ public sealed class AuthenticationController(
         var identifier = request.Identifier.Trim();
         var user = await db.Users.SingleOrDefaultAsync(
             x => x.Username == identifier || x.Email == identifier, cancellationToken);
-        if (user is null || !user.IsActive
+        if (user is null || !user.IsActive || !ApplicationRoles.IsValid(user.Role)
             || passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.Password)
                 == PasswordVerificationResult.Failed)
         {
@@ -47,39 +47,6 @@ public sealed class AuthenticationController(
         user.LastLoginAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(CreateLoginResponse(user));
-    }
-
-    [AllowAnonymous]
-    [HttpPost("signup")]
-    public async Task<ActionResult<AuthenticatedUserResponse>> SignUp(
-        SignUpRequest request,
-        CancellationToken cancellationToken)
-    {
-        var fullName = request.FullName.Trim();
-        var username = request.Username.Trim();
-        var email = request.Email.Trim().ToLowerInvariant();
-        if (await db.Users.AnyAsync(
-            x => x.Username == username || x.Email == email, cancellationToken))
-            return Conflict(new ProblemDetails
-            {
-                Status = StatusCodes.Status409Conflict,
-                Title = "That username or email address is already in use."
-            });
-
-        var user = new User
-        {
-            FullName = fullName,
-            Username = username,
-            Email = email,
-            Role = "Operator",
-            PasswordHash = string.Empty,
-            IsActive = true
-        };
-        user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
-        db.Users.Add(user);
-        await db.SaveChangesAsync(cancellationToken);
-        return StatusCode(StatusCodes.Status201Created,
-            new AuthenticatedUserResponse(user.Id, user.FullName, user.Username, user.Email, user.Role));
     }
 
     [AllowAnonymous]
@@ -121,7 +88,7 @@ public sealed class AuthenticationController(
 
         var user = await db.Users.SingleOrDefaultAsync(
             x => x.Email == payload.Email && x.IsActive, cancellationToken);
-        if (user is null)
+        if (user is null || !ApplicationRoles.IsValid(user.Role))
             return Unauthorized(new ProblemDetails
             {
                 Status = StatusCodes.Status401Unauthorized,
@@ -251,21 +218,6 @@ public sealed class LoginRequest
     public string Identifier { get; init; } = string.Empty;
 
     [Required, StringLength(256, MinimumLength = 1)]
-    public string Password { get; init; } = string.Empty;
-}
-
-public sealed class SignUpRequest
-{
-    [Required, StringLength(150, MinimumLength = 2)]
-    public string FullName { get; init; } = string.Empty;
-
-    [Required, StringLength(100, MinimumLength = 3), RegularExpression(@"^[A-Za-z0-9._-]+$")]
-    public string Username { get; init; } = string.Empty;
-
-    [Required, EmailAddress, StringLength(256)]
-    public string Email { get; init; } = string.Empty;
-
-    [Required, StringLength(256, MinimumLength = 12)]
     public string Password { get; init; } = string.Empty;
 }
 

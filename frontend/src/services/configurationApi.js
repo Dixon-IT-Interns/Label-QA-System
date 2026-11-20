@@ -71,5 +71,8 @@ export function getApiErrorMessage(error) {
   if (problem?.errors && typeof problem.errors === 'object') {
     return Object.values(problem.errors).flat().join(' ')
   }
+  if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+    return 'The request timed out. Check whether it completed before retrying.'
+  }
   return 'The configuration request failed. Check the API connection and try again.'
 }

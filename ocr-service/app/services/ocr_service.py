@@ -494,11 +494,11 @@ def _is_config_field_pair(fields: list[ConfiguredField]) -> bool:
 
 def _is_co_field_set(fields: list[ConfiguredField]) -> bool:
     names = {_normalized_field_name(field.field_name) for field in fields}
-    return {"serialnumber", "partnumber", "modelno", "qrcode"}.issubset(names)
+    return {"modelno", "qrcode", "partnumber"}.issubset(names)
 
 
 def _select_co_fields(fields: list[ConfiguredField]) -> list[ConfiguredField]:
-    required = ("serialnumber", "partnumber", "modelno", "qrcode")
+    required = ("modelno", "qrcode", "partnumber")
     by_name: dict[str, ConfiguredField] = {}
     for field in fields:
         kind = _normalized_field_name(field.field_name)
@@ -507,7 +507,7 @@ def _select_co_fields(fields: list[ConfiguredField]) -> list[ConfiguredField]:
                 raise ValueError(f"CO field_config contains duplicate {field.field_name} fields.")
             by_name[kind] = field
     if any(name not in by_name for name in required):
-        raise ValueError("CO field_config must contain one each of SERIAL_NUMBER, PART_NUMBER, MODEL_NO, and QR_CODE.")
+        raise ValueError("CO field_config must contain one each of MODEL_NO, QR_CODE, and PART_NUMBER.")
     return [by_name[name] for name in required]
 
 
@@ -533,12 +533,14 @@ def _extract_co_labeled_value(
         )
         if kind == "serialnumber"
         else re.compile(
-            r"(?<![A-Z0-9])P\s*/\s*N(?![A-Z0-9])\s*[:=]?\s*(?P<value>[A-Z0-9#)\]]{7,18})",
+            r"(?<![A-Z0-9])(?:P\s*/\s*N|P\s+N|PN|PART\s+NUMBER|PART\s+NO\.?)(?![A-Z0-9])"
+            r"[\s|_:=\-\[\](){}]{0,12}(?P<value>[A-Z0-9#)\]]{7,18})",
             re.IGNORECASE,
         )
     )
     observed: dict[str, list[tuple[str, float, list[list[float]]]]] = {}
     versions: list[str] = []
+    part_number_conflicts: dict[str, list[float]] = {}
     part_number = _part_number_from_qr_payload(qr_payload) if kind == "partnumber" else None
     qr_serial_number = _serial_number_from_qr_payload(qr_payload) if kind == "serialnumber" else None
     for top in range(top_limit, max(top_limit + 1, bottom_limit - band_height + 1), step):
@@ -563,11 +565,10 @@ def _extract_co_labeled_value(
                     if not re.fullmatch(r"[A-Z0-9]{8,20}", value, re.IGNORECASE):
                         continue
                 else:
-                    if not re.fullmatch(r"[A-Z0-9]{5,12}#[A-Z0-9]{2,6}", value, re.IGNORECASE):
-                        if not part_number or not _matches_qr_confirmed_part_number(value, part_number):
-                            continue
                     if part_number:
                         if not _matches_qr_confirmed_part_number(value, part_number):
+                            if re.fullmatch(r"[A-Z0-9]{5,12}#[A-Z0-9]{2,6}", value, re.IGNORECASE):
+                                part_number_conflicts.setdefault(value.casefold(), []).append(line.confidence)
                             continue
                         value = part_number
                     elif not re.fullmatch(r"[A-Z0-9]{5,12}#[A-Z0-9]{2,6}", value, re.IGNORECASE):
@@ -581,7 +582,53 @@ def _extract_co_labeled_value(
                 ]
                 observed.setdefault(value.casefold(), []).append((value, confidence, box))
 
+    if kind == "partnumber" and not observed:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image.copy()
+        enhanced = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8)).apply(gray)
+        variants = (gray, enhanced, cv2.threshold(
+            enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )[1])
+        for processed in variants:
+            result = provider.extract(processed)
+            if result.version:
+                versions.append(result.version)
+            candidate = match_configured_fields([field], result.lines)[0]
+            if candidate.status != "DETECTED" or not candidate.value:
+                continue
+            value = re.sub(r"\s+", "", candidate.value).strip()
+            is_valid_part_number = bool(
+                re.fullmatch(r"[A-Z0-9]{5,12}#[A-Z0-9]{2,6}", value, re.IGNORECASE)
+            )
+            if part_number:
+                if _matches_qr_confirmed_part_number(value, part_number):
+                    value = part_number
+                else:
+                    if is_valid_part_number:
+                        part_number_conflicts.setdefault(value.casefold(), []).append(candidate.confidence)
+                    continue
+            elif not is_valid_part_number:
+                continue
+            box = candidate.box or [
+                [0.0, 0.0],
+                [float(width), 0.0],
+                [float(width), float(height)],
+                [0.0, float(height)],
+            ]
+            observed.setdefault(value.casefold(), []).append((value, candidate.confidence, box))
+
     field_label = "S/N" if kind == "serialnumber" else "P/N"
+    has_confident_qr_conflict = part_number and any(
+        len(confidences) >= 3 and max(confidences) >= 0.85
+        for confidences in part_number_conflicts.values()
+    )
+    if kind == "partnumber" and has_confident_qr_conflict and not observed:
+        return FieldCandidate(
+            field_name=field.field_name,
+            confidence=0,
+            status="AMBIGUOUS",
+            reason="Repeated high-confidence printed P/N readings do not match the part number embedded in the decoded QR payload.",
+        ), versions
+
     if qr_serial_number:
         qr_confirmed = [
             detection
@@ -627,6 +674,14 @@ def _extract_co_labeled_value(
             confidence=0,
             status="AMBIGUOUS",
             reason=f"Multiple distinct field-valid values were read beside the {field_label} label.",
+        ), versions
+    if kind == "partnumber" and part_number:
+        return FieldCandidate(
+            field_name=field.field_name,
+            value=part_number,
+            confidence=1,
+            status="DETECTED",
+            reason="The P/N was read from the 240 field in the decoded QR payload.",
         ), versions
     return FieldCandidate(
         field_name=field.field_name,

@@ -163,12 +163,11 @@ class ConfigOCRApiUploadTests(unittest.TestCase):
 
 @unittest.skipUnless(_tesseract_available(), "Native Tesseract is required for this OCR API test.")
 class OCRApiEndToEndTests(unittest.TestCase):
-    def test_co_extraction_returns_only_the_four_targeted_fields(self) -> None:
+    def test_co_extraction_returns_only_model_qr_and_part_number_fields(self) -> None:
         configured_fields = [
-            {"field_name": "SERIAL_NUMBER", "display_name": "S/N", "confidence_threshold": 0.5},
-            {"field_name": "PART_NUMBER", "display_name": "P/N", "confidence_threshold": 0.5},
             {"field_name": "MODEL_NO", "display_name": "Model No.", "confidence_threshold": 0.5},
             {"field_name": "QR_CODE", "display_name": "QR Code", "confidence_threshold": 0.5},
+            {"field_name": "PART_NUMBER", "display_name": "P/N", "confidence_threshold": 0.5},
             {"field_name": "PROCESSOR", "display_name": "Processor"},
         ]
         app = FastAPI()
@@ -194,10 +193,9 @@ class OCRApiEndToEndTests(unittest.TestCase):
         self.assertEqual(200, response.status_code, response.text)
         candidates = {candidate["field_name"]: candidate for candidate in result["field_candidates"]}
         self.assertEqual(
-            {"SERIAL_NUMBER", "PART_NUMBER", "MODEL_NO", "QR_CODE"},
+            {"PART_NUMBER", "MODEL_NO", "QR_CODE"},
             set(candidates),
         )
-        self.assertEqual("1N4635062D", candidates["SERIAL_NUMBER"]["value"])
         self.assertEqual("E52PWPA#ACJ", candidates["PART_NUMBER"]["value"])
         self.assertEqual("HP Laptop 15-fd1652TU", candidates["MODEL_NO"]["value"])
         self.assertEqual(expected_qr, candidates["QR_CODE"]["value"])

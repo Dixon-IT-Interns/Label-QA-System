@@ -1,9 +1,5 @@
 import apiClient from './apiClient.js'
 
-export async function signUp(user) {
-  return (await apiClient.post('/api/auth/signup', user)).data
-}
-
 export async function requestPasswordReset(email) {
   return (await apiClient.post('/api/auth/forgot-password', { email })).data
 }

@@ -5,6 +5,7 @@ public interface IInspectionReportService
     Task<InspectionReportDownload> GenerateOrGetAsync(
         Guid inspectionId,
         Guid generatedByUserId,
+        bool isSupervisor,
         CancellationToken cancellationToken);
 }
 

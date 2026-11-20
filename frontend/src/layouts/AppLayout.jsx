@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   Boxes,
   ClipboardCheck,
+  Database,
   FileStack,
   Gauge,
   History,
@@ -54,9 +55,8 @@ function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const location = useLocation()
   const { isAuthenticated, user, logout } = useAuth()
-  const isAdmin = user?.role === 'Admin'
-  const isViewer = user?.role === 'Viewer'
-  const canCreateInspection = user?.role === 'Admin' || user?.role === 'Operator'
+  const isSupervisor = user?.role === 'Supervisor'
+  const canCreateInspection = isSupervisor || user?.role === 'Operator'
   const closeMenu = () => setMenuOpen(false)
   const currentPath = location.pathname === '/dashboard' ? 'Dashboard' : 'LabelVerify'
 
@@ -89,12 +89,12 @@ function AppLayout() {
             {primaryNavigation.filter((item) => canCreateInspection || item.to !== '/inspections/new').map((item) => (
               <NavigationLink item={item} key={item.to} onNavigate={closeMenu} />
             ))}
-            {isViewer && <NavigationLink item={{ to: '/profile', label: 'Profile', icon: UserRoundCog }} onNavigate={closeMenu} />}
-            {isAdmin && configurationNavigation.map((item) => (
+            {isSupervisor && configurationNavigation.map((item) => (
               <NavigationLink item={item} key={item.to} onNavigate={closeMenu} />
             ))}
-            {isAdmin && <NavigationLink item={{ to: '/users', label: 'Users', icon: UserRoundCog }} onNavigate={closeMenu} />}
-            {isAdmin && <NavigationLink item={{ to: '/settings', label: 'Settings', icon: Settings }} onNavigate={closeMenu} />}
+            {isSupervisor && <NavigationLink item={{ to: '/master-labels', label: 'Master labels', icon: Database }} onNavigate={closeMenu} />}
+            {isSupervisor && <NavigationLink item={{ to: '/users', label: 'Users', icon: UserRoundCog }} onNavigate={closeMenu} />}
+            {isSupervisor && <NavigationLink item={{ to: '/settings', label: 'Settings', icon: Settings }} onNavigate={closeMenu} />}
           </ul>
         </nav>
         <div className="topbar-actions">
@@ -112,10 +112,10 @@ function AppLayout() {
       <main className="content-wrap" data-page={currentPath}>
         <Outlet />
       </main>
-      <nav aria-label="Mobile navigation" className={`mobile-bottom-nav${isViewer ? ' is-viewer' : ''}`}>
+      <nav aria-label="Mobile navigation" className="mobile-bottom-nav">
         <NavLink end className={({ isActive }) => `mobile-bottom-nav-link${isActive ? ' active' : ''}`} to="/dashboard"><Home size={17} /><span>Home</span></NavLink>
         <NavLink end className={({ isActive }) => `mobile-bottom-nav-link${isActive ? ' active' : ''}`} to="/inspections"><History size={17} /><span>History</span></NavLink>
-        {!isViewer && <NavLink className={({ isActive }) => `mobile-bottom-nav-link${isActive ? ' active' : ''}`} to="/label-profiles"><SlidersHorizontal size={17} /><span>Config</span></NavLink>}
+        {isSupervisor && <NavLink className={({ isActive }) => `mobile-bottom-nav-link${isActive ? ' active' : ''}`} to="/label-profiles"><SlidersHorizontal size={17} /><span>Config</span></NavLink>}
         <NavLink className={({ isActive }) => `mobile-bottom-nav-link${isActive ? ' active' : ''}`} to="/profile"><UserRoundCog size={17} /><span>Profile</span></NavLink>
       </nav>
     </div>

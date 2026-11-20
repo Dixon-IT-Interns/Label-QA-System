@@ -56,7 +56,6 @@ function Login() {
         <button className="button button-primary login-submit" disabled={busy} type="submit">{busy ? 'Signing in…' : 'Sign in'}</button>
         <div aria-hidden="true" className="login-divider"><span>or</span></div>
         <GoogleSignInButton onCredential={handleGoogleCredential} onError={setError} />
-        <p className="login-signup-prompt">Don&apos;t have an account? <Link to="/signup">Sign up</Link></p>
       </form>
     </main>
   )

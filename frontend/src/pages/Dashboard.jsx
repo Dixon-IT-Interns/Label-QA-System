@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, CheckCircle2, CircleX, Clock3, ClipboardList } from 'lucide-react'
+import { ArrowRight, CheckCircle2, CircleX, Clock3, ClipboardList, Database } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import dashboardBanner from '../assets/dashboard-banner.png'
 import EmptyState from '../components/EmptyState.jsx'
@@ -21,7 +21,7 @@ function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const { user } = useAuth()
-  const canCreateInspection = user?.role === 'Admin' || user?.role === 'Operator'
+  const canCreateInspection = user?.role === 'Supervisor' || user?.role === 'Operator'
 
   useEffect(() => {
     let active = true
@@ -36,7 +36,7 @@ function Dashboard() {
     ? `${((data.failCount / data.totalInspections) * 100).toFixed(1)}% of inspections`
     : 'Failed inspections'
   const metrics = [
-    { label: 'Total inspections', value: data?.totalInspections, note: 'All recorded inspections', icon: ClipboardList, tone: 'primary' },
+    { label: 'Total inspections', value: data?.totalInspections, note: user?.role === 'Supervisor' ? 'All recorded inspections' : 'Your recorded inspections', icon: ClipboardList, tone: 'primary' },
     { label: 'Pass rate', value: data ? `${data.passRatePercent}%` : null, note: data ? `${data.passCount} passed` : 'Overall results', icon: CheckCircle2, tone: 'success' },
     { label: 'Failed', value: data?.failCount, note: data ? failedRate : 'Failed inspections', icon: CircleX, tone: 'danger' },
     { label: 'Pending review', value: data?.reviewRequiredCount, note: 'Awaiting operator review', icon: Clock3, tone: 'neutral' },
@@ -58,6 +58,11 @@ function Dashboard() {
         to="/inspections/new"
       />}
     </figure>
+    {user?.role === 'Supervisor' && <section className="panel dashboard-master-labels">
+      <div className="dashboard-master-labels-icon"><Database size={19} /></div>
+      <div><h2>Master Labels</h2><p>Configure the reference COO and Config labels that are automatically used for each model&apos;s inspections.</p></div>
+      <Link className="button button-secondary" to="/master-labels">Manage master labels <ArrowRight size={14} /></Link>
+    </section>}
     {error && <div className="configuration-alert" role="alert">{error}</div>}
     <section aria-label="Inspection summary" className="dashboard-stat-grid">
       {metrics.map(({ label, value, note, icon: Icon, tone }) => <article className={`panel dashboard-stat-card is-${tone}`} key={label}>

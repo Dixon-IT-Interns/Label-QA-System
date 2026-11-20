@@ -9,7 +9,9 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
     public void Configure(EntityTypeBuilder<User> entity)
     {
         entity.ToTable("ApplicationUsers", table =>
-            table.HasCheckConstraint("CK_ApplicationUsers_Role", "[Role] IN ('Admin', 'Operator', 'Viewer')"));
+            table.HasCheckConstraint(
+                "CK_ApplicationUsers_Role",
+                "[Role] IN ('Supervisor', 'Operator')"));
         entity.Property(x => x.FullName).HasMaxLength(150).IsRequired();
         entity.Property(x => x.Username).HasMaxLength(100).IsRequired();
         entity.Property(x => x.Email).HasMaxLength(256).IsRequired();
