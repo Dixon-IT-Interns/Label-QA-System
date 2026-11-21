@@ -8,6 +8,7 @@ namespace Dixon.LabelVerification.API.Services;
 
 public sealed class FieldDefinitionConfigurationService(
     LabelVerificationDbContext dbContext,
+    AuthenticatedUserContext currentUser,
     ILogger<FieldDefinitionConfigurationService> logger) : IFieldDefinitionConfigurationService
 {
     public async Task<IReadOnlyList<FieldDefinitionResponse>> GetAllAsync(
@@ -15,8 +16,15 @@ public sealed class FieldDefinitionConfigurationService(
         CancellationToken cancellationToken)
     {
         var query = GetFieldQuery();
+        if (!currentUser.IsAdmin)
+        {
+            var brandId = currentUser.BrandId
+                ?? throw new UnauthorizedAccessException("The authenticated account has no assigned brand.");
+            query = query.Where(x => x.LabelProfile.BrandId == brandId);
+        }
         if (labelProfileId.HasValue)
         {
+            await EnsureProfileExistsAsync(labelProfileId.Value, cancellationToken);
             query = query.Where(x => x.LabelProfileId == labelProfileId.Value);
         }
 
@@ -29,6 +37,7 @@ public sealed class FieldDefinitionConfigurationService(
     {
         var field = await GetFieldQuery().SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Field definition '{id}' was not found.");
+        currentUser.EnsureCanAccessBrand(field.LabelProfile.BrandId);
         return ToResponse(field);
     }
 
@@ -61,21 +70,46 @@ public sealed class FieldDefinitionConfigurationService(
         FieldDefinitionRequest request,
         CancellationToken cancellationToken)
     {
-        await EnsureProfileExistsAsync(labelProfileId, cancellationToken);
-        await EnsureProfileNotPinnedAsync(labelProfileId, cancellationToken);
-        var key = request.FieldName.Trim().ToUpperInvariant();
-        await EnsureUniqueKeyAsync(labelProfileId, key, null, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            System.Data.IsolationLevel.Serializable, cancellationToken);
+        currentUser.EnsureCanManageConfiguration();
+        var profile = await dbContext.LabelProfiles.SingleOrDefaultAsync(
+            x => x.Id == labelProfileId, cancellationToken)
+            ?? throw new ConfigurationNotFoundException($"Label profile '{labelProfileId}' was not found.");
+        currentUser.EnsureCanAccessBrand(profile.BrandId);
+        var profileWasForked = false;
+        if (await IsProfilePinnedAsync(profile.Id, cancellationToken))
+        {
+            if (!profile.IsActive)
+            {
+                throw new ConfigurationConflictException(
+                    "Only the active profile version can be edited. Select the active version to change its settings.");
+            }
 
-        var field = CreateEntity(labelProfileId, request, key);
+            profile = await CreateNextProfileVersionAsync(profile, cancellationToken);
+            profileWasForked = true;
+        }
+
+        var key = request.FieldName.Trim().ToUpperInvariant();
+        if (profileWasForked)
+        {
+            EnsureUniqueKey(profile, key, null);
+        }
+        else
+        {
+            await EnsureUniqueKeyAsync(profile.Id, key, null, cancellationToken);
+        }
+
+        var field = CreateEntity(profile.Id, request, key);
         dbContext.FieldDefinitions.Add(field);
         await dbContext.SaveChangesAsync(cancellationToken);
-        await LoadReferencesAsync(field, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         logger.LogInformation(
             "Created field {FieldDefinitionId} ({FieldKey}) on label profile {LabelProfileId}",
             field.Id,
             field.FieldName,
-            labelProfileId);
-        return ToResponse(field);
+            profile.Id);
+        return ToResponse(field, profile.LabelType);
     }
 
     public async Task<FieldDefinitionResponse> UpdateAsync(
@@ -83,13 +117,42 @@ public sealed class FieldDefinitionConfigurationService(
         FieldDefinitionRequest request,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            System.Data.IsolationLevel.Serializable, cancellationToken);
         var field = await dbContext.FieldDefinitions
+            .Include(x => x.LabelProfile)
             .Include(x => x.Aliases)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Field definition '{id}' was not found.");
-        await EnsureProfileNotPinnedAsync(field.LabelProfileId, cancellationToken);
+        currentUser.EnsureCanManageConfiguration();
+        currentUser.EnsureCanAccessBrand(field.LabelProfile.BrandId);
+        var labelType = field.LabelProfile.LabelType;
+        LabelProfile? forkedProfile = null;
+        if (await IsProfilePinnedAsync(field.LabelProfileId, cancellationToken))
+        {
+            if (!field.LabelProfile.IsActive)
+            {
+                throw new ConfigurationConflictException(
+                    "Only the active profile version can be edited. Select the active version to change its settings.");
+            }
+
+            forkedProfile = await CreateNextProfileVersionAsync(field.LabelProfile, cancellationToken);
+            field = forkedProfile.FieldDefinitions.Single(clone =>
+                string.Equals(clone.FieldName, field.FieldName, StringComparison.OrdinalIgnoreCase));
+            field.LabelProfileId = forkedProfile.Id;
+            field.LabelProfile = forkedProfile;
+            labelType = forkedProfile.LabelType;
+        }
+
         var key = request.FieldName.Trim().ToUpperInvariant();
-        await EnsureUniqueKeyAsync(field.LabelProfileId, key, id, cancellationToken);
+        if (forkedProfile is not null)
+        {
+            EnsureUniqueKey(forkedProfile, key, field.Id);
+        }
+        else
+        {
+            await EnsureUniqueKeyAsync(field.LabelProfileId, key, field.Id, cancellationToken);
+        }
 
         field.FieldName = key;
         field.DisplayName = request.DisplayName.Trim();
@@ -98,16 +161,36 @@ public sealed class FieldDefinitionConfigurationService(
         dbContext.FieldAliases.RemoveRange(field.Aliases);
         field.Aliases = CreateAliases(GetAliases(request));
         await dbContext.SaveChangesAsync(cancellationToken);
-        await LoadReferencesAsync(field, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         logger.LogInformation("Updated field definition {FieldDefinitionId}", id);
-        return ToResponse(field);
+        return ToResponse(field, labelType);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
-        var field = await dbContext.FieldDefinitions.SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            System.Data.IsolationLevel.Serializable, cancellationToken);
+        currentUser.EnsureCanManageConfiguration();
+        var field = await dbContext.FieldDefinitions.Include(x => x.LabelProfile)
+            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Field definition '{id}' was not found.");
-        await EnsureProfileNotPinnedAsync(field.LabelProfileId, cancellationToken);
+        currentUser.EnsureCanAccessBrand(field.LabelProfile.BrandId);
+        if (await IsProfilePinnedAsync(field.LabelProfileId, cancellationToken))
+        {
+            if (!field.LabelProfile.IsActive)
+            {
+                throw new ConfigurationConflictException(
+                    "Only the active profile version can be edited. Select the active version to change its settings.");
+            }
+
+            await CreateNextProfileVersionAsync(
+                field.LabelProfile, cancellationToken, field.FieldName);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            logger.LogInformation("Deleted field {FieldDefinitionId} in a new profile version", id);
+            return;
+        }
+
         if (await dbContext.FieldComparisons.AnyAsync(x => x.FieldDefinitionId == id, cancellationToken))
         {
             throw new ConfigurationConflictException(
@@ -116,6 +199,7 @@ public sealed class FieldDefinitionConfigurationService(
 
         dbContext.FieldDefinitions.Remove(field);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         logger.LogInformation("Deleted field definition {FieldDefinitionId}", id);
     }
 
@@ -126,21 +210,88 @@ public sealed class FieldDefinitionConfigurationService(
 
     private async Task EnsureProfileExistsAsync(Guid labelProfileId, CancellationToken cancellationToken)
     {
-        if (!await dbContext.LabelProfiles.AnyAsync(x => x.Id == labelProfileId, cancellationToken))
+        var profile = await dbContext.LabelProfiles.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == labelProfileId, cancellationToken)
+            ?? throw new ConfigurationNotFoundException($"Label profile '{labelProfileId}' was not found.");
+        currentUser.EnsureCanAccessBrand(profile.BrandId);
+    }
+
+    private Task<bool> IsProfilePinnedAsync(Guid labelProfileId, CancellationToken cancellationToken) =>
+        dbContext.InspectionSessions.AnyAsync(
+            x => x.LabelProfileCOId == labelProfileId || x.LabelProfileConfigId == labelProfileId,
+            cancellationToken);
+
+    private static void EnsureUniqueKey(LabelProfile profile, string key, Guid? excludedId)
+    {
+        if (profile.FieldDefinitions.Any(field =>
+                field.Id != excludedId
+                && string.Equals(field.FieldName, key, StringComparison.OrdinalIgnoreCase)))
         {
-            throw new ConfigurationNotFoundException($"Label profile '{labelProfileId}' was not found.");
+            throw new ConfigurationConflictException("A field with this key already exists on the selected profile.");
         }
     }
 
-    private async Task EnsureProfileNotPinnedAsync(Guid labelProfileId, CancellationToken cancellationToken)
+    private async Task<LabelProfile> CreateNextProfileVersionAsync(
+        LabelProfile sourceProfile,
+        CancellationToken cancellationToken,
+        string? excludedFieldName = null)
     {
-        if (await dbContext.InspectionSessions.AnyAsync(
-                x => x.LabelProfileCOId == labelProfileId || x.LabelProfileConfigId == labelProfileId,
-                cancellationToken))
+        var sourceFields = await dbContext.FieldDefinitions.AsNoTracking()
+            .Include(x => x.Aliases)
+            .Where(x => x.LabelProfileId == sourceProfile.Id
+                && (excludedFieldName == null || x.FieldName != excludedFieldName))
+            .OrderBy(x => x.DisplayOrder)
+            .ThenBy(x => x.FieldName)
+            .ToListAsync(cancellationToken);
+        var latestVersion = await dbContext.LabelProfiles
+            .Where(x => x.BrandId == sourceProfile.BrandId
+                && x.ModelId == sourceProfile.ModelId
+                && x.LabelType == sourceProfile.LabelType
+                && x.Code == sourceProfile.Code)
+            .MaxAsync(x => x.Version, cancellationToken);
+
+        sourceProfile.IsActive = false;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var newProfile = new LabelProfile
         {
-            throw new ConfigurationConflictException(
-                "This profile version is pinned by inspection history. Deactivate it and create a new profile version instead.");
+            BrandId = sourceProfile.BrandId,
+            ModelId = sourceProfile.ModelId,
+            LabelType = sourceProfile.LabelType,
+            Code = sourceProfile.Code,
+            Name = sourceProfile.Name,
+            Version = checked(latestVersion + 1),
+            IsActive = true,
+            EffectiveFromUtc = DateTimeOffset.UtcNow
+        };
+        foreach (var sourceField in sourceFields)
+        {
+            newProfile.FieldDefinitions.Add(new FieldDefinition
+            {
+                LabelProfileId = newProfile.Id,
+                LabelProfile = newProfile,
+                FieldName = sourceField.FieldName,
+                DisplayName = sourceField.DisplayName,
+                DataType = sourceField.DataType,
+                Required = sourceField.Required,
+                Critical = sourceField.Critical,
+                OcrConfidenceThreshold = sourceField.OcrConfidenceThreshold,
+                DisplayOrder = sourceField.DisplayOrder,
+                IsActive = sourceField.IsActive,
+                ComparisonStrategy = sourceField.ComparisonStrategy,
+                NumericAbsoluteTolerance = sourceField.NumericAbsoluteTolerance,
+                NumericRelativeTolerance = sourceField.NumericRelativeTolerance,
+                Aliases = sourceField.Aliases.Select(alias => new FieldAlias
+                {
+                    Value = alias.Value,
+                    Language = alias.Language,
+                    IsActive = alias.IsActive
+                }).ToList()
+            });
         }
+
+        dbContext.LabelProfiles.Add(newProfile);
+        return newProfile;
     }
 
     private async Task EnsureUniqueKeyAsync(
@@ -155,12 +306,6 @@ public sealed class FieldDefinitionConfigurationService(
         {
             throw new ConfigurationConflictException("A field with this key already exists on the selected profile.");
         }
-    }
-
-    private async Task LoadReferencesAsync(FieldDefinition field, CancellationToken cancellationToken)
-    {
-        await dbContext.Entry(field).Reference(x => x.LabelProfile).LoadAsync(cancellationToken);
-        await dbContext.Entry(field).Collection(x => x.Aliases).LoadAsync(cancellationToken);
     }
 
     private static FieldDefinition CreateEntity(
@@ -223,10 +368,13 @@ public sealed class FieldDefinitionConfigurationService(
             .ToUpperInvariant();
 
     private static FieldDefinitionResponse ToResponse(FieldDefinition field) =>
+        ToResponse(field, field.LabelProfile.LabelType);
+
+    private static FieldDefinitionResponse ToResponse(FieldDefinition field, LabelType labelType) =>
         new(
             field.Id,
             field.LabelProfileId,
-            field.LabelProfile.LabelType,
+            labelType,
             field.FieldName,
             field.DisplayName,
             field.DataType,

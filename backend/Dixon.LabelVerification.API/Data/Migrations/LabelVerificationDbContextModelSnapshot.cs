@@ -697,7 +697,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
-                    b.Property<Guid>("UploadedByUserId")
+                    b.Property<Guid?>("UploadedByUserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("Width")
@@ -840,7 +840,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
-                    b.Property<Guid>("GeneratedByUserId")
+                    b.Property<Guid?>("GeneratedByUserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("InspectionSessionId")
@@ -903,7 +903,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
-                    b.Property<Guid>("CreatedByUserId")
+                    b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("FinalRemarks")
@@ -1253,7 +1253,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
-                    b.Property<Guid>("UploadedByUserId")
+                    b.Property<Guid?>("UploadedByUserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("Width")
@@ -1513,6 +1513,9 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("BrandId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetimeoffset")
@@ -1527,9 +1530,6 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
 
                     b.Property<DateTimeOffset?>("LastLoginAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -1561,6 +1561,8 @@ namespace Dixon.LabelVerification.API.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BrandId");
+
                     b.HasIndex("Email")
                         .IsUnique();
 
@@ -1571,7 +1573,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
 
                     b.ToTable("ApplicationUsers", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ApplicationUsers_Role", "[Role] IN ('Supervisor', 'Operator')");
+                            t.HasCheckConstraint("CK_ApplicationUsers_Role", "[Role] IN ('Admin', 'Supervisor', 'Operator')");
                         });
                 });
 
@@ -1593,6 +1595,11 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.HasData(
                         new
                         {
+                            Code = "Admin",
+                            Name = "Admin"
+                        },
+                        new
+                        {
                             Code = "Supervisor",
                             Name = "Supervisor"
                         },
@@ -1608,7 +1615,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.HasOne("Dixon.LabelVerification.API.Entities.User", "CorrectedByUser")
                         .WithMany()
                         .HasForeignKey("CorrectedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Dixon.LabelVerification.API.Entities.FieldDefinition", "FieldDefinition")
                         .WithMany()
@@ -1679,8 +1686,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.HasOne("Dixon.LabelVerification.API.Entities.User", "UploadedByUser")
                         .WithMany()
                         .HasForeignKey("UploadedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("InspectionSession");
 
@@ -1698,7 +1704,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.HasOne("Dixon.LabelVerification.API.Entities.User", "UserAccount")
                         .WithMany("InspectionLogs")
                         .HasForeignKey("UserAccountId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("InspectionSession");
 
@@ -1721,8 +1727,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.HasOne("Dixon.LabelVerification.API.Entities.User", "GeneratedByUser")
                         .WithMany()
                         .HasForeignKey("GeneratedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Dixon.LabelVerification.API.Entities.InspectionSession", "InspectionSession")
                         .WithMany("Reports")
@@ -1746,8 +1751,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.HasOne("Dixon.LabelVerification.API.Entities.User", "CreatedByUser")
                         .WithMany("CreatedInspections")
                         .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Dixon.LabelVerification.API.Entities.LabelProfile", "LabelProfileCO")
                         .WithMany()
@@ -1818,8 +1822,7 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.HasOne("Dixon.LabelVerification.API.Entities.User", "UploadedByUser")
                         .WithMany()
                         .HasForeignKey("UploadedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Dixon.LabelVerification.API.Entities.LaptopModel", "Model")
                         .WithMany()
@@ -1878,11 +1881,18 @@ namespace Dixon.LabelVerification.API.Data.Migrations
 
             modelBuilder.Entity("Dixon.LabelVerification.API.Entities.User", b =>
                 {
+                    b.HasOne("Dixon.LabelVerification.API.Entities.Brand", "Brand")
+                        .WithMany("Users")
+                        .HasForeignKey("BrandId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Dixon.LabelVerification.API.Entities.UserRole", "UserRole")
                         .WithMany("Users")
                         .HasForeignKey("Role")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Brand");
 
                     b.Navigation("UserRole");
                 });
@@ -1892,6 +1902,8 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.Navigation("LabelProfiles");
 
                     b.Navigation("Models");
+
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("Dixon.LabelVerification.API.Entities.FieldDefinition", b =>

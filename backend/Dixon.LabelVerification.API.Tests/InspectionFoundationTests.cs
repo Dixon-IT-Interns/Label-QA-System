@@ -88,7 +88,7 @@ public sealed class InspectionFoundationTests
     }
 
     [Fact]
-    public void MasterLabelManagementWritesAreSupervisorOnly()
+    public void MasterLabelManagementWritesAllowAdminsAndSupervisors()
     {
         var controllerAuthorization = typeof(MasterLabelsController)
             .GetCustomAttributes(typeof(AuthorizeAttribute), true)
@@ -103,8 +103,88 @@ public sealed class InspectionFoundationTests
             .Cast<AuthorizeAttribute>().Single();
 
         Assert.NotNull(controllerAuthorization);
-        Assert.Equal(ApplicationRoles.Supervisor, saveAuthorization.Roles);
-        Assert.Equal("Supervisor,Operator", availabilityAuthorization.Roles);
+        Assert.Equal("Admin,Supervisor", saveAuthorization.Roles);
+        Assert.Equal("Admin,Supervisor,Operator", availabilityAuthorization.Roles);
+    }
+
+    [Fact]
+    public void UserManagementRestrictsSupervisorScopeAndPermanentDeletionToAdmins()
+    {
+        var getAll = typeof(UsersController).GetMethod(nameof(UsersController.GetAll))!;
+        var create = typeof(UsersController).GetMethod(nameof(UsersController.Create))!;
+        var update = typeof(UsersController).GetMethod(nameof(UsersController.Update))!;
+        var delete = typeof(UsersController).GetMethod(nameof(UsersController.Delete))!;
+
+        Assert.Equal("Admin,Supervisor", GetRoles(getAll));
+        Assert.Equal("Admin,Supervisor", GetRoles(create));
+        Assert.Equal("Admin,Supervisor", GetRoles(update));
+        Assert.Equal(ApplicationRoles.Admin, GetRoles(delete));
+    }
+
+    [Fact]
+    public void GlobalSystemSettingsAreAdminOnly()
+    {
+        var authorization = typeof(SettingsController)
+            .GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>().Single();
+
+        Assert.Equal(ApplicationRoles.Admin, authorization.Roles);
+    }
+
+    [Fact]
+    public void MasterConfigWritesAreAdminOnly()
+    {
+        var controllerAuthorization = typeof(LabelProfilesController)
+            .GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>().Single();
+        var writeMethods = new[]
+        {
+            nameof(LabelProfilesController.Create),
+            nameof(LabelProfilesController.Update),
+            nameof(LabelProfilesController.Delete),
+            nameof(LabelProfilesController.CreateField),
+            nameof(LabelProfilesController.UpdateField),
+            nameof(LabelProfilesController.DeleteField)
+        };
+
+        Assert.Null(controllerAuthorization.Roles);
+        Assert.All(writeMethods, method => Assert.Equal(
+            ApplicationRoles.Admin,
+            GetRoles(typeof(LabelProfilesController).GetMethod(method)!)));
+    }
+
+    [Fact]
+    public void UserBrandAndAttributionRelationshipsSupportSafeUserDeletion()
+    {
+        using var db = CreateDbContext();
+        var user = db.Model.FindEntityType(typeof(User))!;
+        var brandForeignKey = user.GetForeignKeys()
+            .Single(key => key.PrincipalEntityType.ClrType == typeof(Brand));
+        var brandIndex = user.GetIndexes()
+            .Single(index => index.Properties.Select(property => property.Name)
+                .SequenceEqual([nameof(User.BrandId)]));
+
+        Assert.False(brandForeignKey.IsRequired);
+        Assert.Equal(DeleteBehavior.Restrict, brandForeignKey.DeleteBehavior);
+        Assert.Contains(user.GetProperties(), property => property.Name == nameof(User.BrandId));
+        Assert.NotNull(brandIndex);
+
+        var attributionRelationships = new[]
+        {
+            (typeof(InspectionSession), nameof(InspectionSession.CreatedByUserId)),
+            (typeof(InspectionImage), nameof(InspectionImage.UploadedByUserId)),
+            (typeof(InspectionReport), nameof(InspectionReport.GeneratedByUserId)),
+            (typeof(MasterLabel), nameof(MasterLabel.UploadedByUserId)),
+            (typeof(InspectionLog), nameof(InspectionLog.UserAccountId)),
+            (typeof(ExtractedField), nameof(ExtractedField.CorrectedByUserId))
+        };
+        foreach (var (entityType, propertyName) in attributionRelationships)
+        {
+            var foreignKey = db.Model.FindEntityType(entityType)!.GetForeignKeys()
+                .Single(key => key.Properties.Any(property => property.Name == propertyName));
+            Assert.False(foreignKey.IsRequired);
+            Assert.Equal(DeleteBehavior.SetNull, foreignKey.DeleteBehavior);
+        }
     }
 
     [Fact]
@@ -250,7 +330,7 @@ public sealed class InspectionFoundationTests
         var imageDownload = typeof(InspectionsController).GetMethod(nameof(InspectionsController.GetImage))!;
 
         Assert.NotNull(controllerAuthorization);
-        Assert.Equal("Supervisor,Operator", authorization.Roles);
+        Assert.Equal("Admin,Supervisor,Operator", authorization.Roles);
         Assert.Empty(imageDownload.GetCustomAttributes(typeof(AllowAnonymousAttribute), true));
     }
 
@@ -323,6 +403,10 @@ public sealed class InspectionFoundationTests
             .Options;
         return new LabelVerificationDbContext(options);
     }
+
+    private static string? GetRoles(System.Reflection.MemberInfo member) =>
+        member.GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>().Single().Roles;
 
     private sealed class TemporaryDirectory : IDisposable
     {

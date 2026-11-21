@@ -1,7 +1,7 @@
 /*
   Dixon Label Verification database initializer.
   Run using SQL Server Management Studio or sqlcmd with an account allowed to create databases.
-  The application creates the first Supervisor separately via --bootstrap-admin.
+  The application creates an initial Admin separately via --bootstrap-admin.
 */
 USE [master];
 GO
@@ -59,16 +59,18 @@ BEGIN TRY
             PasswordResetTokenHash nvarchar(64) NULL,
             PasswordResetExpiresAtUtc datetimeoffset(7) NULL,
             Role nvarchar(20) NOT NULL,
-            IsActive bit NOT NULL CONSTRAINT DF_ApplicationUsers_IsActive DEFAULT (1),
+            BrandId uniqueidentifier NULL,
             LastLoginAtUtc datetimeoffset(7) NULL,
             CreatedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_ApplicationUsers_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
             UpdatedAtUtc datetimeoffset(7) NULL,
             CONSTRAINT PK_ApplicationUsers PRIMARY KEY (Id),
-            CONSTRAINT CK_ApplicationUsers_Role CHECK (Role IN (N'Supervisor', N'Operator')),
-            CONSTRAINT FK_ApplicationUsers_UserRoles_Role FOREIGN KEY (Role) REFERENCES dbo.UserRoles(Code)
+            CONSTRAINT CK_ApplicationUsers_Role CHECK (Role IN (N'Admin', N'Supervisor', N'Operator')),
+            CONSTRAINT FK_ApplicationUsers_UserRoles_Role FOREIGN KEY (Role) REFERENCES dbo.UserRoles(Code),
+            CONSTRAINT FK_ApplicationUsers_Brands_BrandId FOREIGN KEY (BrandId) REFERENCES dbo.Brands(Id)
         );
         CREATE UNIQUE INDEX IX_ApplicationUsers_Username ON dbo.ApplicationUsers(Username);
         CREATE UNIQUE INDEX IX_ApplicationUsers_Email ON dbo.ApplicationUsers(Email);
+        CREATE INDEX IX_ApplicationUsers_BrandId ON dbo.ApplicationUsers(BrandId);
     END;
 
     IF COL_LENGTH(N'dbo.ApplicationUsers', N'PasswordResetTokenHash') IS NULL
@@ -214,7 +216,7 @@ BEGIN TRY
             OverallConfidence float NULL,
             ProcessingDurationMs bigint NULL,
             ImageQualityStatus nvarchar(30) NOT NULL,
-            UploadedByUserId uniqueidentifier NOT NULL,
+            UploadedByUserId uniqueidentifier NULL,
             UploadedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_MasterLabels_UploadedAtUtc DEFAULT SYSUTCDATETIME(),
             CreatedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_MasterLabels_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
             UpdatedAtUtc datetimeoffset(7) NULL,
@@ -226,7 +228,7 @@ BEGIN TRY
             CONSTRAINT FK_MasterLabels_LabelProfiles_LabelProfileId
                 FOREIGN KEY (LabelProfileId) REFERENCES dbo.LabelProfiles(Id),
             CONSTRAINT FK_MasterLabels_ApplicationUsers_UploadedByUserId
-                FOREIGN KEY (UploadedByUserId) REFERENCES dbo.ApplicationUsers(Id)
+                FOREIGN KEY (UploadedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL
         );
         CREATE INDEX IX_MasterLabels_BrandId_ModelId ON dbo.MasterLabels(BrandId, ModelId);
         CREATE INDEX IX_MasterLabels_LabelProfileId ON dbo.MasterLabels(LabelProfileId);
@@ -264,7 +266,7 @@ BEGIN TRY
             Id uniqueidentifier NOT NULL CONSTRAINT DF_InspectionSessions_Id DEFAULT NEWSEQUENTIALID(),
             BrandId uniqueidentifier NOT NULL,
             ModelId uniqueidentifier NOT NULL,
-            CreatedByUserId uniqueidentifier NOT NULL,
+            CreatedByUserId uniqueidentifier NULL,
             LabelProfileCOId uniqueidentifier NULL,
             LabelProfileConfigId uniqueidentifier NULL,
             InspectionNumber nvarchar(40) NOT NULL,
@@ -285,7 +287,7 @@ BEGIN TRY
             CONSTRAINT PK_InspectionSessions PRIMARY KEY (Id),
             CONSTRAINT FK_InspectionSessions_Brands_BrandId FOREIGN KEY (BrandId) REFERENCES dbo.Brands(Id),
             CONSTRAINT FK_InspectionSessions_LaptopModels_BrandId_ModelId FOREIGN KEY (BrandId, ModelId) REFERENCES dbo.LaptopModels(BrandId, Id),
-            CONSTRAINT FK_InspectionSessions_ApplicationUsers_CreatedByUserId FOREIGN KEY (CreatedByUserId) REFERENCES dbo.ApplicationUsers(Id),
+            CONSTRAINT FK_InspectionSessions_ApplicationUsers_CreatedByUserId FOREIGN KEY (CreatedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL,
             CONSTRAINT FK_InspectionSessions_LabelProfiles_LabelProfileCOId FOREIGN KEY (LabelProfileCOId) REFERENCES dbo.LabelProfiles(Id),
             CONSTRAINT FK_InspectionSessions_LabelProfiles_LabelProfileConfigId FOREIGN KEY (LabelProfileConfigId) REFERENCES dbo.LabelProfiles(Id)
         );
@@ -312,7 +314,7 @@ BEGIN TRY
             SizeBytes bigint NOT NULL,
             Width int NOT NULL,
             Height int NOT NULL,
-            UploadedByUserId uniqueidentifier NOT NULL,
+            UploadedByUserId uniqueidentifier NULL,
             UploadedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_InspectionImages_UploadedAtUtc DEFAULT SYSUTCDATETIME(),
             ImageQualityStatus nvarchar(30) NOT NULL CONSTRAINT DF_InspectionImages_ImageQualityStatus DEFAULT (N'PENDING'),
             CreatedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_InspectionImages_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
@@ -321,7 +323,7 @@ BEGIN TRY
             CONSTRAINT CK_InspectionImages_SizeBytes CHECK (SizeBytes > 0),
             CONSTRAINT CK_InspectionImages_ImageType CHECK (ImageType IN (N'MASTER_CO', N'ACTUAL_CO', N'MASTER_CONFIG', N'ACTUAL_CONFIG')),
             CONSTRAINT FK_InspectionImages_InspectionSessions_InspectionSessionId FOREIGN KEY (InspectionSessionId) REFERENCES dbo.InspectionSessions(Id),
-            CONSTRAINT FK_InspectionImages_ApplicationUsers_UploadedByUserId FOREIGN KEY (UploadedByUserId) REFERENCES dbo.ApplicationUsers(Id)
+            CONSTRAINT FK_InspectionImages_ApplicationUsers_UploadedByUserId FOREIGN KEY (UploadedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL
         );
         CREATE UNIQUE INDEX IX_InspectionImages_InspectionSessionId_ImageType ON dbo.InspectionImages(InspectionSessionId, ImageType);
         CREATE INDEX IX_InspectionImages_InspectionSessionId ON dbo.InspectionImages(InspectionSessionId);
@@ -372,7 +374,7 @@ BEGIN TRY
             CONSTRAINT CK_ExtractedFields_Confidence CHECK (Confidence >= 0 AND Confidence <= 1),
             CONSTRAINT FK_ExtractedFields_OCRResults_OcrResultId FOREIGN KEY (OcrResultId) REFERENCES dbo.OCRResults(Id),
             CONSTRAINT FK_ExtractedFields_FieldDefinitions_FieldDefinitionId FOREIGN KEY (FieldDefinitionId) REFERENCES dbo.FieldDefinitions(Id),
-            CONSTRAINT FK_ExtractedFields_ApplicationUsers_CorrectedByUserId FOREIGN KEY (CorrectedByUserId) REFERENCES dbo.ApplicationUsers(Id)
+            CONSTRAINT FK_ExtractedFields_ApplicationUsers_CorrectedByUserId FOREIGN KEY (CorrectedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL
         );
         CREATE INDEX IX_ExtractedFields_OcrResultId_FieldKey ON dbo.ExtractedFields(OcrResultId, FieldKey);
     END;
@@ -453,7 +455,7 @@ BEGIN TRY
             UpdatedAtUtc datetimeoffset(7) NULL,
             CONSTRAINT PK_InspectionLogs PRIMARY KEY (Id),
             CONSTRAINT FK_InspectionLogs_InspectionSessions_InspectionSessionId FOREIGN KEY (InspectionSessionId) REFERENCES dbo.InspectionSessions(Id),
-            CONSTRAINT FK_InspectionLogs_ApplicationUsers_UserAccountId FOREIGN KEY (UserAccountId) REFERENCES dbo.ApplicationUsers(Id)
+            CONSTRAINT FK_InspectionLogs_ApplicationUsers_UserAccountId FOREIGN KEY (UserAccountId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL
         );
         CREATE INDEX IX_InspectionLogs_InspectionSessionId_CreatedAtUtc ON dbo.InspectionLogs(InspectionSessionId, CreatedAtUtc);
     END;
@@ -470,12 +472,12 @@ BEGIN TRY
             Sha256Hash nvarchar(64) NOT NULL,
             ContentType nvarchar(100) NOT NULL CONSTRAINT DF_InspectionReports_ContentType DEFAULT (N'application/pdf'),
             GeneratedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_InspectionReports_GeneratedAtUtc DEFAULT SYSUTCDATETIME(),
-            GeneratedByUserId uniqueidentifier NOT NULL,
+            GeneratedByUserId uniqueidentifier NULL,
             CreatedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_InspectionReports_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
             UpdatedAtUtc datetimeoffset(7) NULL,
             CONSTRAINT PK_InspectionReports PRIMARY KEY (Id),
             CONSTRAINT FK_InspectionReports_InspectionSessions_InspectionSessionId FOREIGN KEY (InspectionSessionId) REFERENCES dbo.InspectionSessions(Id),
-            CONSTRAINT FK_InspectionReports_ApplicationUsers_GeneratedByUserId FOREIGN KEY (GeneratedByUserId) REFERENCES dbo.ApplicationUsers(Id)
+            CONSTRAINT FK_InspectionReports_ApplicationUsers_GeneratedByUserId FOREIGN KEY (GeneratedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL
         );
         CREATE UNIQUE INDEX IX_InspectionReports_ReportNumber ON dbo.InspectionReports(ReportNumber);
         CREATE INDEX IX_InspectionReports_InspectionSessionId ON dbo.InspectionReports(InspectionSessionId);
@@ -515,31 +517,135 @@ BEGIN TRY
         CREATE INDEX IX_InspectionProcessingJobs_Status_CreatedAtUtc ON dbo.InspectionProcessingJobs(Status, CreatedAtUtc);
     END;
 
+    IF OBJECT_ID(N'dbo.CK_ApplicationUsers_Role', N'C') IS NOT NULL
+        ALTER TABLE dbo.ApplicationUsers DROP CONSTRAINT CK_ApplicationUsers_Role;
+
+    IF COL_LENGTH(N'dbo.ApplicationUsers', N'BrandId') IS NULL
+        ALTER TABLE dbo.ApplicationUsers ADD BrandId uniqueidentifier NULL;
+
+    IF OBJECT_ID(N'dbo.FK_ExtractedFields_ApplicationUsers_CorrectedByUserId', N'F') IS NOT NULL
+        ALTER TABLE dbo.ExtractedFields DROP CONSTRAINT FK_ExtractedFields_ApplicationUsers_CorrectedByUserId;
+    IF OBJECT_ID(N'dbo.FK_InspectionImages_ApplicationUsers_UploadedByUserId', N'F') IS NOT NULL
+        ALTER TABLE dbo.InspectionImages DROP CONSTRAINT FK_InspectionImages_ApplicationUsers_UploadedByUserId;
+    IF OBJECT_ID(N'dbo.FK_InspectionLogs_ApplicationUsers_UserAccountId', N'F') IS NOT NULL
+        ALTER TABLE dbo.InspectionLogs DROP CONSTRAINT FK_InspectionLogs_ApplicationUsers_UserAccountId;
+    IF OBJECT_ID(N'dbo.FK_InspectionReports_ApplicationUsers_GeneratedByUserId', N'F') IS NOT NULL
+        ALTER TABLE dbo.InspectionReports DROP CONSTRAINT FK_InspectionReports_ApplicationUsers_GeneratedByUserId;
+    IF OBJECT_ID(N'dbo.FK_InspectionSessions_ApplicationUsers_CreatedByUserId', N'F') IS NOT NULL
+        ALTER TABLE dbo.InspectionSessions DROP CONSTRAINT FK_InspectionSessions_ApplicationUsers_CreatedByUserId;
+    IF OBJECT_ID(N'dbo.FK_MasterLabels_ApplicationUsers_UploadedByUserId', N'F') IS NOT NULL
+        ALTER TABLE dbo.MasterLabels DROP CONSTRAINT FK_MasterLabels_ApplicationUsers_UploadedByUserId;
+
+    ALTER TABLE dbo.ExtractedFields ALTER COLUMN CorrectedByUserId uniqueidentifier NULL;
+    ALTER TABLE dbo.InspectionImages ALTER COLUMN UploadedByUserId uniqueidentifier NULL;
+    ALTER TABLE dbo.InspectionLogs ALTER COLUMN UserAccountId uniqueidentifier NULL;
+    ALTER TABLE dbo.InspectionReports ALTER COLUMN GeneratedByUserId uniqueidentifier NULL;
+    ALTER TABLE dbo.InspectionSessions ALTER COLUMN CreatedByUserId uniqueidentifier NULL;
+    ALTER TABLE dbo.MasterLabels ALTER COLUMN UploadedByUserId uniqueidentifier NULL;
+
+    IF COL_LENGTH(N'dbo.ApplicationUsers', N'IsActive') IS NOT NULL
+    BEGIN
+        EXEC(N'
+            UPDATE dbo.ExtractedFields SET CorrectedByUserId = NULL
+            WHERE CorrectedByUserId IN (SELECT Id FROM dbo.ApplicationUsers WHERE IsActive = 0);
+            UPDATE dbo.InspectionImages SET UploadedByUserId = NULL
+            WHERE UploadedByUserId IN (SELECT Id FROM dbo.ApplicationUsers WHERE IsActive = 0);
+            UPDATE dbo.InspectionLogs SET UserAccountId = NULL
+            WHERE UserAccountId IN (SELECT Id FROM dbo.ApplicationUsers WHERE IsActive = 0);
+            UPDATE dbo.InspectionReports SET GeneratedByUserId = NULL
+            WHERE GeneratedByUserId IN (SELECT Id FROM dbo.ApplicationUsers WHERE IsActive = 0);
+            UPDATE dbo.InspectionSessions SET CreatedByUserId = NULL
+            WHERE CreatedByUserId IN (SELECT Id FROM dbo.ApplicationUsers WHERE IsActive = 0);
+            UPDATE dbo.MasterLabels SET UploadedByUserId = NULL
+            WHERE UploadedByUserId IN (SELECT Id FROM dbo.ApplicationUsers WHERE IsActive = 0);
+            DELETE dbo.ApplicationUsers WHERE IsActive = 0;
+        ');
+
+        DECLARE @IsActiveDefaultConstraint sysname;
+        SELECT @IsActiveDefaultConstraint = dc.name
+        FROM sys.default_constraints AS dc
+        INNER JOIN sys.columns AS c
+            ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id
+        WHERE dc.parent_object_id = OBJECT_ID(N'dbo.ApplicationUsers') AND c.name = N'IsActive';
+
+        IF @IsActiveDefaultConstraint IS NOT NULL
+        BEGIN
+            DECLARE @DropIsActiveDefaultConstraintSql nvarchar(max);
+            SET @DropIsActiveDefaultConstraintSql =
+                N'ALTER TABLE dbo.ApplicationUsers DROP CONSTRAINT ' + QUOTENAME(@IsActiveDefaultConstraint);
+            EXEC(@DropIsActiveDefaultConstraintSql);
+        END;
+        ALTER TABLE dbo.ApplicationUsers DROP COLUMN IsActive;
+    END;
+
+    IF OBJECT_ID(N'dbo.FK_ApplicationUsers_Brands_BrandId', N'F') IS NULL
+        ALTER TABLE dbo.ApplicationUsers
+            ADD CONSTRAINT FK_ApplicationUsers_Brands_BrandId
+            FOREIGN KEY (BrandId) REFERENCES dbo.Brands(Id);
+
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.ApplicationUsers') AND name = N'IX_ApplicationUsers_BrandId')
+        CREATE INDEX IX_ApplicationUsers_BrandId ON dbo.ApplicationUsers(BrandId);
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE Code = N'Admin')
+        INSERT dbo.UserRoles(Code, Name) VALUES (N'Admin', N'Admin');
     IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE Code = N'Supervisor')
         INSERT dbo.UserRoles(Code, Name) VALUES (N'Supervisor', N'Supervisor');
     IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE Code = N'Operator')
         INSERT dbo.UserRoles(Code, Name) VALUES (N'Operator', N'Operator');
 
-    IF OBJECT_ID(N'dbo.CK_ApplicationUsers_Role', N'C') IS NOT NULL
-        ALTER TABLE dbo.ApplicationUsers DROP CONSTRAINT CK_ApplicationUsers_Role;
-
-    UPDATE dbo.ApplicationUsers SET Role = N'Supervisor' WHERE Role = N'Admin';
     UPDATE dbo.ApplicationUsers SET Role = N'Operator' WHERE Role = N'Viewer';
-    DELETE dbo.UserRoles WHERE Code IN (N'Admin', N'Viewer');
+
+    EXEC(N'
+        ;WITH UserBrands AS
+        (
+            SELECT CreatedByUserId AS UserId, BrandId
+            FROM dbo.InspectionSessions
+            WHERE CreatedByUserId IS NOT NULL
+            GROUP BY CreatedByUserId, BrandId
+        )
+        UPDATE users
+        SET BrandId = userBrands.BrandId
+        FROM dbo.ApplicationUsers AS users
+        INNER JOIN UserBrands AS userBrands ON userBrands.UserId = users.Id
+        WHERE users.Role IN (N''Supervisor'', N''Operator'')
+          AND users.BrandId IS NULL
+          AND (SELECT COUNT(*) FROM UserBrands AS candidates WHERE candidates.UserId = users.Id) = 1;
+    ');
+
+    DELETE dbo.UserRoles WHERE Code = N'Viewer';
 
     ALTER TABLE dbo.ApplicationUsers
-        ADD CONSTRAINT CK_ApplicationUsers_Role CHECK (Role IN (N'Supervisor', N'Operator'));
+        ADD CONSTRAINT CK_ApplicationUsers_Role CHECK (Role IN (N'Admin', N'Supervisor', N'Operator'));
 
-    IF NOT EXISTS (SELECT 1 FROM dbo.Brands WHERE Code = N'HP')
+    ALTER TABLE dbo.ExtractedFields
+        ADD CONSTRAINT FK_ExtractedFields_ApplicationUsers_CorrectedByUserId
+        FOREIGN KEY (CorrectedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL;
+    ALTER TABLE dbo.InspectionImages
+        ADD CONSTRAINT FK_InspectionImages_ApplicationUsers_UploadedByUserId
+        FOREIGN KEY (UploadedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL;
+    ALTER TABLE dbo.InspectionLogs
+        ADD CONSTRAINT FK_InspectionLogs_ApplicationUsers_UserAccountId
+        FOREIGN KEY (UserAccountId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL;
+    ALTER TABLE dbo.InspectionReports
+        ADD CONSTRAINT FK_InspectionReports_ApplicationUsers_GeneratedByUserId
+        FOREIGN KEY (GeneratedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL;
+    ALTER TABLE dbo.InspectionSessions
+        ADD CONSTRAINT FK_InspectionSessions_ApplicationUsers_CreatedByUserId
+        FOREIGN KEY (CreatedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL;
+    ALTER TABLE dbo.MasterLabels
+        ADD CONSTRAINT FK_MasterLabels_ApplicationUsers_UploadedByUserId
+        FOREIGN KEY (UploadedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL;
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.Brands WHERE Code = N'HP' OR Name = N'HP')
         INSERT dbo.Brands(Id, Code, Name, IsActive, CreatedAtUtc)
         VALUES ('73A3F07D-C906-4E49-A3DB-4854AB1A9D01', N'HP', N'HP', 1, '2025-01-01T00:00:00+00:00');
-    IF NOT EXISTS (SELECT 1 FROM dbo.Brands WHERE Code = N'ASUS')
+    IF NOT EXISTS (SELECT 1 FROM dbo.Brands WHERE Code = N'ASUS' OR Name = N'ASUS')
         INSERT dbo.Brands(Id, Code, Name, IsActive, CreatedAtUtc)
         VALUES ('73A3F07D-C906-4E49-A3DB-4854AB1A9D02', N'ASUS', N'ASUS', 1, '2025-01-01T00:00:00+00:00');
-    IF NOT EXISTS (SELECT 1 FROM dbo.Brands WHERE Code = N'ACER')
+    IF NOT EXISTS (SELECT 1 FROM dbo.Brands WHERE Code = N'ACER' OR Name = N'Acer')
         INSERT dbo.Brands(Id, Code, Name, IsActive, CreatedAtUtc)
         VALUES ('73A3F07D-C906-4E49-A3DB-4854AB1A9D03', N'ACER', N'Acer', 1, '2025-01-01T00:00:00+00:00');
-    IF NOT EXISTS (SELECT 1 FROM dbo.Brands WHERE Code = N'GIGABYTE')
+    IF NOT EXISTS (SELECT 1 FROM dbo.Brands WHERE Code = N'GIGABYTE' OR Name = N'Gigabyte')
         INSERT dbo.Brands(Id, Code, Name, IsActive, CreatedAtUtc)
         VALUES ('73A3F07D-C906-4E49-A3DB-4854AB1A9D04', N'GIGABYTE', N'Gigabyte', 1, '2025-01-01T00:00:00+00:00');
 

@@ -30,7 +30,7 @@ public sealed class InspectionSessionConfiguration : IEntityTypeConfiguration<In
             .HasPrincipalKey(x => new { x.BrandId, x.Id })
             .OnDelete(DeleteBehavior.Restrict);
         entity.HasOne(x => x.CreatedByUser).WithMany(x => x.CreatedInspections)
-            .HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
         entity.HasOne(x => x.LabelProfileCO).WithMany().HasForeignKey(x => x.LabelProfileCOId)
             .OnDelete(DeleteBehavior.Restrict);
         entity.HasOne(x => x.LabelProfileConfig).WithMany().HasForeignKey(x => x.LabelProfileConfigId)

@@ -9,7 +9,7 @@ public sealed class InspectionReport : AuditedEntity
     public required string Sha256Hash { get; set; }
     public string ContentType { get; set; } = "application/pdf";
     public DateTimeOffset GeneratedAtUtc { get; set; } = DateTimeOffset.UtcNow;
-    public Guid GeneratedByUserId { get; set; }
+    public Guid? GeneratedByUserId { get; set; }
     public InspectionSession InspectionSession { get; set; } = null!;
-    public User GeneratedByUser { get; set; } = null!;
+    public User? GeneratedByUser { get; set; }
 }

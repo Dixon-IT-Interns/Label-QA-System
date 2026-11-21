@@ -14,10 +14,10 @@ public sealed class InspectionImage : AuditedEntity
     public long SizeBytes { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
-    public Guid UploadedByUserId { get; set; }
+    public Guid? UploadedByUserId { get; set; }
     public DateTimeOffset UploadedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public string ImageQualityStatus { get; set; } = "PENDING";
     public InspectionSession InspectionSession { get; set; } = null!;
-    public User UploadedByUser { get; set; } = null!;
+    public User? UploadedByUser { get; set; }
     public ICollection<OcrResult> OcrResults { get; set; } = new List<OcrResult>();
 }

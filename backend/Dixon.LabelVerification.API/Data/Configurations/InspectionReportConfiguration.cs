@@ -19,6 +19,6 @@ public sealed class InspectionReportConfiguration : IEntityTypeConfiguration<Ins
         entity.HasOne(x => x.InspectionSession).WithMany(x => x.Reports)
             .HasForeignKey(x => x.InspectionSessionId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne(x => x.GeneratedByUser).WithMany().HasForeignKey(x => x.GeneratedByUserId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

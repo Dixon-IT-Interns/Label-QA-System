@@ -25,6 +25,6 @@ public sealed class InspectionImageConfiguration : IEntityTypeConfiguration<Insp
         entity.HasOne(x => x.InspectionSession).WithMany(x => x.Images)
             .HasForeignKey(x => x.InspectionSessionId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne(x => x.UploadedByUser).WithMany()
-            .HasForeignKey(x => x.UploadedByUserId).OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(x => x.UploadedByUserId).OnDelete(DeleteBehavior.SetNull);
     }
 }

@@ -22,10 +22,10 @@ public sealed class MasterLabel : AuditedEntity
     public double? OverallConfidence { get; set; }
     public long? ProcessingDurationMs { get; set; }
     public string ImageQualityStatus { get; set; } = "ACCEPTED";
-    public Guid UploadedByUserId { get; set; }
+    public Guid? UploadedByUserId { get; set; }
     public DateTimeOffset UploadedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public LaptopModel Model { get; set; } = null!;
     public LabelProfile LabelProfile { get; set; } = null!;
-    public User UploadedByUser { get; set; } = null!;
+    public User? UploadedByUser { get; set; }
     public ICollection<MasterLabelField> Fields { get; set; } = new List<MasterLabelField>();
 }

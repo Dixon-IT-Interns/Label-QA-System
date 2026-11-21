@@ -33,7 +33,8 @@ public sealed class AuthenticationController(
         var identifier = request.Identifier.Trim();
         var user = await db.Users.SingleOrDefaultAsync(
             x => x.Username == identifier || x.Email == identifier, cancellationToken);
-        if (user is null || !user.IsActive || !ApplicationRoles.IsValid(user.Role)
+        if (user is null || !ApplicationRoles.IsValid(user.Role)
+            || !ApplicationRoles.HasValidBrandAssignment(user.Role, user.BrandId)
             || passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.Password)
                 == PasswordVerificationResult.Failed)
         {
@@ -87,12 +88,13 @@ public sealed class AuthenticationController(
             });
 
         var user = await db.Users.SingleOrDefaultAsync(
-            x => x.Email == payload.Email && x.IsActive, cancellationToken);
-        if (user is null || !ApplicationRoles.IsValid(user.Role))
+            x => x.Email == payload.Email, cancellationToken);
+        if (user is null || !ApplicationRoles.IsValid(user.Role)
+            || !ApplicationRoles.HasValidBrandAssignment(user.Role, user.BrandId))
             return Unauthorized(new ProblemDetails
             {
                 Status = StatusCodes.Status401Unauthorized,
-                Title = "Google sign-in is available only for an existing active account with the same email."
+                Title = "Google sign-in is available only for an existing account with a valid role and Brand assignment."
             });
 
         user.LastLoginAtUtc = DateTimeOffset.UtcNow;
@@ -114,8 +116,8 @@ public sealed class AuthenticationController(
             });
 
         var user = await db.Users.SingleOrDefaultAsync(
-            x => x.Email == request.Email.Trim() && x.IsActive, cancellationToken);
-        const string confirmation = "If an active account matches that email, a password reset link will be sent.";
+            x => x.Email == request.Email.Trim(), cancellationToken);
+        const string confirmation = "If an account matches that email, a password reset link will be sent.";
         if (user is null)
             return Accepted(new { message = confirmation });
 
@@ -155,7 +157,7 @@ public sealed class AuthenticationController(
         await using var transaction = await db.Database.BeginTransactionAsync(
             System.Data.IsolationLevel.Serializable, cancellationToken);
         var user = await db.Users.SingleOrDefaultAsync(
-            x => x.Email == request.Email.Trim() && x.IsActive, cancellationToken);
+            x => x.Email == request.Email.Trim(), cancellationToken);
         if (user?.PasswordResetTokenHash is null
             || user.PasswordResetExpiresAtUtc is null
             || user.PasswordResetExpiresAtUtc.Value <= DateTimeOffset.UtcNow
@@ -181,10 +183,13 @@ public sealed class AuthenticationController(
         if (!Guid.TryParse(claim, out var userId))
             return Unauthorized();
         var user = await db.Users.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == userId && x.IsActive, cancellationToken);
+            .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
         if (user is null)
             return Unauthorized();
-        return Ok(new AuthenticatedUserResponse(user.Id, user.FullName, user.Username, user.Email, user.Role));
+        if (!ApplicationRoles.HasValidBrandAssignment(user.Role, user.BrandId))
+            return Unauthorized();
+        return Ok(new AuthenticatedUserResponse(
+            user.Id, user.FullName, user.Username, user.Email, user.Role, user.BrandId));
     }
 
     private LoginResponse CreateLoginResponse(User user)
@@ -193,7 +198,8 @@ public sealed class AuthenticationController(
         return new LoginResponse(
             token,
             expiresAtUtc,
-            new AuthenticatedUserResponse(user.Id, user.FullName, user.Username, user.Email, user.Role));
+            new AuthenticatedUserResponse(
+                user.Id, user.FullName, user.Username, user.Email, user.Role, user.BrandId));
     }
 
     private static string CreatePasswordResetToken() =>
@@ -245,6 +251,7 @@ public sealed class ResetPasswordRequest
     public string Password { get; init; } = string.Empty;
 }
 
-public sealed record AuthenticatedUserResponse(Guid Id, string FullName, string Username, string Email, string Role);
+public sealed record AuthenticatedUserResponse(
+    Guid Id, string FullName, string Username, string Email, string Role, Guid? BrandId);
 
 public sealed record LoginResponse(string AccessToken, DateTimeOffset ExpiresAtUtc, AuthenticatedUserResponse User);

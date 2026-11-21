@@ -8,6 +8,7 @@ namespace Dixon.LabelVerification.API.Services;
 
 public sealed class LabelProfileConfigurationService(
     LabelVerificationDbContext dbContext,
+    AuthenticatedUserContext currentUser,
     ILogger<LabelProfileConfigurationService> logger) : ILabelProfileConfigurationService
 {
     public async Task<IReadOnlyList<LabelProfileResponse>> GetAllAsync(
@@ -23,7 +24,14 @@ public sealed class LabelProfileConfigurationService(
 
         if (brandId.HasValue)
         {
+            currentUser.EnsureCanAccessBrand(brandId.Value);
             query = query.Where(x => x.BrandId == brandId.Value);
+        }
+        else if (!currentUser.IsAdmin)
+        {
+            var assignedBrandId = currentUser.BrandId
+                ?? throw new UnauthorizedAccessException("The authenticated account has no assigned brand.");
+            query = query.Where(x => x.BrandId == assignedBrandId);
         }
 
         if (modelId.HasValue)
@@ -46,6 +54,7 @@ public sealed class LabelProfileConfigurationService(
         var profile = await GetProfileQuery()
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Label profile '{id}' was not found.");
+        currentUser.EnsureCanAccessBrand(profile.BrandId);
         return ToResponse(profile);
     }
 
@@ -53,6 +62,8 @@ public sealed class LabelProfileConfigurationService(
         LabelProfileRequest request,
         CancellationToken cancellationToken)
     {
+        currentUser.EnsureCanManageConfiguration();
+        currentUser.EnsureCanAccessBrand(request.BrandId);
         await EnsureBrandAndModelAsync(request.BrandId, request.ModelId, cancellationToken);
         var code = request.Code.Trim().ToUpperInvariant();
         await EnsureUniqueAsync(request, code, null, cancellationToken);
@@ -87,6 +98,9 @@ public sealed class LabelProfileConfigurationService(
     {
         var profile = await dbContext.LabelProfiles.SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Label profile '{id}' was not found.");
+        currentUser.EnsureCanManageConfiguration();
+        currentUser.EnsureCanAccessBrand(profile.BrandId);
+        currentUser.EnsureCanAccessBrand(request.BrandId);
         var isPinned = await IsProfilePinnedAsync(id, cancellationToken);
         if (isPinned)
         {
@@ -128,8 +142,10 @@ public sealed class LabelProfileConfigurationService(
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
+        currentUser.EnsureCanManageConfiguration();
         var profile = await dbContext.LabelProfiles.SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Label profile '{id}' was not found.");
+        currentUser.EnsureCanAccessBrand(profile.BrandId);
         await EnsureProfileNotPinnedAsync(id, cancellationToken);
         if (await dbContext.FieldDefinitions.AnyAsync(x => x.LabelProfileId == id, cancellationToken))
         {

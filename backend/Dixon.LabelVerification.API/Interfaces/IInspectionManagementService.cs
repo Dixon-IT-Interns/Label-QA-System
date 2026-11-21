@@ -14,7 +14,8 @@ public interface IInspectionManagementService
     Task<PagedInspectionResponse> GetAllAsync(
         InspectionListQuery query,
         Guid userId,
-        bool isSupervisor,
+        string role,
+        Guid? brandId,
         CancellationToken cancellationToken);
     Task<InspectionDetailsResponse> GetByIdAsync(Guid id, CancellationToken cancellationToken);
     Task<InspectionDetailsResponse> UpdateAsync(

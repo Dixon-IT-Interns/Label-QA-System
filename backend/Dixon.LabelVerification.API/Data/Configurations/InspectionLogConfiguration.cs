@@ -18,6 +18,6 @@ public sealed class InspectionLogConfiguration : IEntityTypeConfiguration<Inspec
         entity.HasOne(x => x.InspectionSession).WithMany(x => x.Logs)
             .HasForeignKey(x => x.InspectionSessionId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne(x => x.UserAccount).WithMany(x => x.InspectionLogs)
-            .HasForeignKey(x => x.UserAccountId).OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(x => x.UserAccountId).OnDelete(DeleteBehavior.SetNull);
     }
 }

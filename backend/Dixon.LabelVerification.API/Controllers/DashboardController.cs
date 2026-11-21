@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Dixon.LabelVerification.API.Data;
 using Dixon.LabelVerification.API.Entities;
 using Dixon.LabelVerification.API.Services;
@@ -11,19 +10,17 @@ namespace Dixon.LabelVerification.API.Controllers;
 [ApiController]
 [Route("api/dashboard")]
 [Authorize]
-public sealed class DashboardController(LabelVerificationDbContext db) : ControllerBase
+public sealed class DashboardController(
+    LabelVerificationDbContext db,
+    AuthenticatedUserContext currentUser) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<DashboardResponse>> Get(CancellationToken cancellationToken)
     {
-        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(userIdValue, out var userId))
-            return Unauthorized();
-        var isSupervisor = User.IsInRole(ApplicationRoles.Supervisor);
         var now = DateTimeOffset.UtcNow;
         var startOfDay = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
         var inspections = InspectionQueryScope.Apply(
-            db.InspectionSessions.AsNoTracking(), userId, isSupervisor);
+            db.InspectionSessions.AsNoTracking(), currentUser.UserId, currentUser.Role, currentUser.BrandId);
         var today = await inspections.CountAsync(x => x.CreatedAtUtc >= startOfDay, cancellationToken);
         var total = await inspections.CountAsync(cancellationToken);
         var passed = await inspections.CountAsync(x => x.Status == InspectionStatus.PASS, cancellationToken);
@@ -35,7 +32,10 @@ public sealed class DashboardController(LabelVerificationDbContext db) : Control
                 x.Id, x.InspectionNumber, x.Brand.Name, x.Model.Code, x.Model.Name,
                 x.Status, x.CreatedAtUtc))
             .ToListAsync(cancellationToken);
-        var profiles = await db.LabelProfiles.CountAsync(x => x.IsActive, cancellationToken);
+        var profilesQuery = db.LabelProfiles.AsQueryable();
+        if (!currentUser.IsAdmin)
+            profilesQuery = profilesQuery.Where(x => x.BrandId == currentUser.BrandId);
+        var profiles = await profilesQuery.CountAsync(x => x.IsActive, cancellationToken);
         return Ok(new DashboardResponse(
             total, today, passed, failed, review, profiles,
             total == 0 ? 0 : Math.Round((double)passed / total * 100, 1),

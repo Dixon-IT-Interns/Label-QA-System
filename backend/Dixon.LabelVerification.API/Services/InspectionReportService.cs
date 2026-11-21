@@ -14,20 +14,25 @@ public sealed class InspectionReportService(
     LabelVerificationDbContext db,
     IConfiguration configuration,
     IWebHostEnvironment environment,
-    ILogger<InspectionReportService> logger) : IInspectionReportService
+    ILogger<InspectionReportService> logger,
+    AuthenticatedUserContext currentUser) : IInspectionReportService
 {
     private readonly string _storageRoot = InspectionStoragePaths.ResolveRoot(configuration, environment);
 
     public async Task<InspectionReportDownload> GenerateOrGetAsync(
         Guid inspectionId,
         Guid generatedByUserId,
-        bool isSupervisor,
+        string role,
+        Guid? brandId,
         CancellationToken cancellationToken)
     {
-        var inspections = db.InspectionSessions.AsNoTracking()
+        if (generatedByUserId != currentUser.UserId
+            || role != currentUser.Role
+            || brandId != currentUser.BrandId)
+            throw new UnauthorizedAccessException("The report request does not match the authenticated account.");
+        var inspections = InspectionQueryScope.Apply(
+                db.InspectionSessions.AsNoTracking(), generatedByUserId, role, brandId)
             .Where(x => x.Id == inspectionId);
-        if (!isSupervisor)
-            inspections = inspections.Where(x => x.CreatedByUserId == generatedByUserId);
         var inspection = await inspections
             .Include(x => x.Brand)
             .Include(x => x.Model)
@@ -37,12 +42,13 @@ public sealed class InspectionReportService(
             .Include(x => x.Images).ThenInclude(x => x.OcrResults)
             .SingleOrDefaultAsync(x => x.Id == inspectionId, cancellationToken)
             ?? throw new InspectionNotFoundException($"Inspection '{inspectionId}' was not found.");
+        currentUser.EnsureCanAccessBrand(inspection.BrandId);
 
         if (inspection.Status is InspectionStatus.READY or InspectionStatus.PROCESSING)
             throw new ConfigurationConflictException("A PDF report is available only after inspection processing completes.");
 
         var user = await db.Users.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == generatedByUserId && x.IsActive, cancellationToken)
+            .SingleOrDefaultAsync(x => x.Id == generatedByUserId, cancellationToken)
             ?? throw new InspectionValidationException("The authenticated report user is unavailable.");
         var reportNumber = $"RPT-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..32];
         var relativePath = Path.Combine(inspectionId.ToString("N"), "reports", $"{Guid.NewGuid():N}.pdf");
@@ -72,7 +78,7 @@ public sealed class InspectionReportService(
                 .ToList();
             ConfigureQuestPdf();
             var document = new InspectionReportDocument(
-                inspection, inspection.CreatedByUser.FullName, images, extracted);
+                inspection, inspection.CreatedByUser?.FullName ?? "Deleted user", images, extracted);
             await Task.Run(() => document.GeneratePdf(fullPath), cancellationToken);
             await using var reportStream = File.OpenRead(fullPath);
             var reportHash = Convert.ToHexString(await SHA256.HashDataAsync(reportStream, cancellationToken));

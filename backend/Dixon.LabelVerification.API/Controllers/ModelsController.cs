@@ -24,7 +24,7 @@ public sealed class ModelsController(IModelConfigurationService modelService) : 
         Ok(await modelService.GetByIdAsync(id, cancellationToken));
 
     [HttpPost]
-    [Authorize(Roles = ApplicationRoles.Supervisor)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(ModelResponse), StatusCodes.Status201Created)]
     public async Task<ActionResult<ModelResponse>> Create(
         ModelRequest request,
@@ -35,7 +35,7 @@ public sealed class ModelsController(IModelConfigurationService modelService) : 
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = ApplicationRoles.Supervisor)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(ModelResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<ModelResponse>> Update(
         Guid id,
@@ -44,7 +44,7 @@ public sealed class ModelsController(IModelConfigurationService modelService) : 
         Ok(await modelService.UpdateAsync(id, request, cancellationToken));
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = ApplicationRoles.Supervisor)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
