@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Dixon.LabelVerification.API.DTOs;
 using Dixon.LabelVerification.API.Entities;
 using Dixon.LabelVerification.API.Interfaces;
@@ -15,10 +14,11 @@ public sealed class InspectionsController(
     IInspectionManagementService inspectionService,
     IInspectionReportService reportService,
     IInspectionAccessService inspectionAccess,
+    AuthenticatedUserContext currentUser,
     ILogger<InspectionsController> logger) : ControllerBase
 {
     [HttpPost]
-    [Authorize(Roles = ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
     [ProducesResponseType(typeof(InspectionDetailsResponse), StatusCodes.Status201Created)]
     public async Task<ActionResult<InspectionDetailsResponse>> Create(
         CreateInspectionRequest request,
@@ -34,7 +34,7 @@ public sealed class InspectionsController(
         [FromQuery] InspectionListQuery query,
         CancellationToken cancellationToken) =>
         Ok(await inspectionService.GetAllAsync(
-            query, GetAuthenticatedUserId(), IsSupervisor, cancellationToken));
+            query, currentUser.UserId, currentUser.Role, currentUser.BrandId, cancellationToken));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<InspectionDetailsResponse>> GetById(Guid id, CancellationToken cancellationToken)
@@ -44,7 +44,7 @@ public sealed class InspectionsController(
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
     public async Task<ActionResult<InspectionDetailsResponse>> Update(
         Guid id,
         CreateInspectionRequest request,
@@ -56,7 +56,7 @@ public sealed class InspectionsController(
     }
 
     [HttpPost("{id:guid}/images")]
-    [Authorize(Roles = ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
     [RequestSizeLimit(ImageFileInspector.MaximumFileSizeBytes + 1024 * 1024)]
     [ProducesResponseType(typeof(InspectionImageResponse), StatusCodes.Status201Created)]
     public async Task<ActionResult<InspectionImageResponse>> UploadImage(
@@ -107,7 +107,7 @@ public sealed class InspectionsController(
     }
 
     [HttpPost("{id:guid}/images/{imageId:guid}/fields/{fieldDefinitionId:guid}/correct")]
-    [Authorize(Roles = ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
     public async Task<ActionResult<InspectionDetailsResponse>> CorrectField(
         Guid id,
         Guid imageId,
@@ -122,7 +122,7 @@ public sealed class InspectionsController(
     }
 
     [HttpDelete("{id:guid}/images/{imageId:guid}")]
-    [Authorize(Roles = ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
     public async Task<IActionResult> DeleteImage(Guid id, Guid imageId, CancellationToken cancellationToken)
     {
         await EnsureInspectionAccessAsync(id, cancellationToken);
@@ -132,7 +132,7 @@ public sealed class InspectionsController(
     }
 
     [HttpPost("{id:guid}/validate")]
-    [Authorize(Roles = ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
     public async Task<ActionResult<object>> Validate(Guid id, CancellationToken cancellationToken)
     {
         await EnsureInspectionAccessAsync(id, cancellationToken);
@@ -141,7 +141,7 @@ public sealed class InspectionsController(
     }
 
     [HttpPost("{id:guid}/process")]
-    [Authorize(Roles = ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
     public async Task<ActionResult<object>> Process(Guid id, CancellationToken cancellationToken)
     {
         await EnsureInspectionAccessAsync(id, cancellationToken);
@@ -169,7 +169,7 @@ public sealed class InspectionsController(
     }
 
     [HttpPost("{id:guid}/cancel")]
-    [Authorize(Roles = ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
     public async Task<IActionResult> Cancel(Guid id, CancellationToken cancellationToken)
     {
         await EnsureInspectionAccessAsync(id, cancellationToken);
@@ -190,21 +190,13 @@ public sealed class InspectionsController(
     {
         await EnsureInspectionAccessAsync(id, cancellationToken);
         var report = await reportService.GenerateOrGetAsync(
-            id, GetAuthenticatedUserId(), IsSupervisor, cancellationToken);
+            id, currentUser.UserId, currentUser.Role, currentUser.BrandId, cancellationToken);
         return File(report.Content, "application/pdf", report.FileName);
     }
 
-    private bool IsSupervisor => User.IsInRole(ApplicationRoles.Supervisor);
-
-    private Guid GetAuthenticatedUserId()
-    {
-        var value = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(value, out var userId))
-            throw new UnauthorizedAccessException("An authenticated user account is required.");
-        return userId;
-    }
+    private Guid GetAuthenticatedUserId() => currentUser.UserId;
 
     private Task EnsureInspectionAccessAsync(Guid id, CancellationToken cancellationToken) =>
         inspectionAccess.EnsureCanAccessAsync(
-            id, GetAuthenticatedUserId(), IsSupervisor, cancellationToken);
+            id, currentUser.UserId, currentUser.Role, currentUser.BrandId, cancellationToken);
 }

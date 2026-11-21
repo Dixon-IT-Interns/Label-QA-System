@@ -14,14 +14,14 @@ namespace Dixon.LabelVerification.API.Controllers;
 public sealed class MasterLabelsController(IMasterLabelService masterLabelService) : ControllerBase
 {
     [HttpGet("availability/{modelId:guid}")]
-    [Authorize(Roles = ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor + "," + ApplicationRoles.Operator)]
     [ProducesResponseType(typeof(MasterLabelAvailabilityResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<MasterLabelAvailabilityResponse>> GetAvailability(
         Guid modelId, CancellationToken cancellationToken) =>
         Ok(await masterLabelService.GetAvailabilityAsync(modelId, cancellationToken));
 
     [HttpGet]
-    [Authorize(Roles = ApplicationRoles.Supervisor)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(IReadOnlyList<MasterLabelResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<MasterLabelResponse>>> GetAll(
         [FromQuery] Guid? brandId,
@@ -30,14 +30,14 @@ public sealed class MasterLabelsController(IMasterLabelService masterLabelServic
         Ok(await masterLabelService.GetAllAsync(brandId, modelId, cancellationToken));
 
     [HttpGet("models/{modelId:guid}")]
-    [Authorize(Roles = ApplicationRoles.Supervisor)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(IReadOnlyList<MasterLabelResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<MasterLabelResponse>>> GetByModel(
         Guid modelId, CancellationToken cancellationToken) =>
         Ok(await masterLabelService.GetByModelAsync(modelId, cancellationToken));
 
     [HttpPut("{modelId:guid}/pair")]
-    [Authorize(Roles = ApplicationRoles.Supervisor)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor)]
     [RequestSizeLimit(2 * ImageFileInspector.MaximumFileSizeBytes + 1024 * 1024)]
     [ProducesResponseType(typeof(MasterLabelPairResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<MasterLabelPairResponse>> SavePair(
@@ -63,7 +63,7 @@ public sealed class MasterLabelsController(IMasterLabelService masterLabelServic
     }
 
     [HttpPost("detect-model")]
-    [Authorize(Roles = ApplicationRoles.Supervisor)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor)]
     [RequestSizeLimit(ImageFileInspector.MaximumFileSizeBytes + 1024 * 1024)]
     [ProducesResponseType(typeof(DetectedModelResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<DetectedModelResponse>> DetectModel(
@@ -71,7 +71,7 @@ public sealed class MasterLabelsController(IMasterLabelService masterLabelServic
         Ok(await masterLabelService.DetectModelAsync(request, cancellationToken));
 
     [HttpGet("{modelId:guid}/{labelType}/image")]
-    [Authorize(Roles = ApplicationRoles.Supervisor)]
+    [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetImage(
         Guid modelId, LabelType labelType, CancellationToken cancellationToken)

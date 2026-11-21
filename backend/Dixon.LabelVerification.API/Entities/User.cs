@@ -10,7 +10,8 @@ public sealed class User : AuditedEntity
     public string? PasswordResetTokenHash { get; set; }
     public DateTimeOffset? PasswordResetExpiresAtUtc { get; set; }
     public UserRole UserRole { get; set; } = null!;
-    public bool IsActive { get; set; } = true;
+    public Guid? BrandId { get; set; }
+    public Brand? Brand { get; set; }
     public DateTimeOffset? LastLoginAtUtc { get; set; }
     public ICollection<InspectionSession> CreatedInspections { get; set; } = new List<InspectionSession>();
     public ICollection<InspectionLog> InspectionLogs { get; set; } = new List<InspectionLog>();

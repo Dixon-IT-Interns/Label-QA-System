@@ -4,7 +4,7 @@ public sealed class InspectionSession : AuditedEntity
 {
     public Guid BrandId { get; set; }
     public Guid ModelId { get; set; }
-    public Guid CreatedByUserId { get; set; }
+    public Guid? CreatedByUserId { get; set; }
     public Guid? LabelProfileCOId { get; set; }
     public Guid? LabelProfileConfigId { get; set; }
     public required string InspectionNumber { get; set; }
@@ -22,7 +22,7 @@ public sealed class InspectionSession : AuditedEntity
     public byte[] RowVersion { get; set; } = [];
     public Brand Brand { get; set; } = null!;
     public LaptopModel Model { get; set; } = null!;
-    public User CreatedByUser { get; set; } = null!;
+    public User? CreatedByUser { get; set; }
     public LabelProfile? LabelProfileCO { get; set; }
     public LabelProfile? LabelProfileConfig { get; set; }
     public ICollection<InspectionImage> Images { get; set; } = new List<InspectionImage>();

@@ -51,6 +51,8 @@ public sealed class GlobalExceptionMiddleware(
                     (StatusCodes.Status409Conflict, "The data changed while this request was in progress. Refresh and retry."),
                 UnauthorizedAccessException =>
                     (StatusCodes.Status401Unauthorized, exception.Message),
+                ForbiddenAccessException =>
+                    (StatusCodes.Status403Forbidden, exception.Message),
                 ConfigurationNotFoundException =>
                     (StatusCodes.Status404NotFound, exception.Message),
                 ConfigurationConflictException =>

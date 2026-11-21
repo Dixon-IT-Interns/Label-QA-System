@@ -8,6 +8,7 @@ namespace Dixon.LabelVerification.API.Services;
 
 public sealed class ModelConfigurationService(
     LabelVerificationDbContext dbContext,
+    AuthenticatedUserContext currentUser,
     ILogger<ModelConfigurationService> logger) : IModelConfigurationService
 {
     public async Task<IReadOnlyList<ModelResponse>> GetAllAsync(
@@ -17,7 +18,14 @@ public sealed class ModelConfigurationService(
         var query = dbContext.Models.AsNoTracking().Include(x => x.Brand).AsQueryable();
         if (brandId.HasValue)
         {
+            currentUser.EnsureCanAccessBrand(brandId.Value);
             query = query.Where(x => x.BrandId == brandId.Value);
+        }
+        else if (!currentUser.IsAdmin)
+        {
+            var assignedBrandId = currentUser.BrandId
+                ?? throw new UnauthorizedAccessException("The authenticated account has no assigned brand.");
+            query = query.Where(x => x.BrandId == assignedBrandId);
         }
 
         var models = await query.OrderBy(x => x.Brand.Name).ThenBy(x => x.Name)
@@ -30,11 +38,14 @@ public sealed class ModelConfigurationService(
         var model = await dbContext.Models.AsNoTracking().Include(x => x.Brand)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Model '{id}' was not found.");
+        currentUser.EnsureCanAccessBrand(model.BrandId);
         return ToResponse(model);
     }
 
     public async Task<ModelResponse> CreateAsync(ModelRequest request, CancellationToken cancellationToken)
     {
+        currentUser.EnsureCanManageConfiguration();
+        currentUser.EnsureCanAccessBrand(request.BrandId);
         await EnsureBrandExistsAsync(request.BrandId, cancellationToken);
         var code = request.Code.Trim().ToUpperInvariant();
         await EnsureUniqueAsync(request.BrandId, code, null, cancellationToken);
@@ -62,6 +73,9 @@ public sealed class ModelConfigurationService(
         var model = await dbContext.Models.Include(x => x.Brand)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Model '{id}' was not found.");
+        currentUser.EnsureCanManageConfiguration();
+        currentUser.EnsureCanAccessBrand(model.BrandId);
+        currentUser.EnsureCanAccessBrand(request.BrandId);
         await EnsureBrandExistsAsync(request.BrandId, cancellationToken);
         var code = request.Code.Trim().ToUpperInvariant();
         await EnsureUniqueAsync(request.BrandId, code, id, cancellationToken);
@@ -80,8 +94,10 @@ public sealed class ModelConfigurationService(
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
+        currentUser.EnsureCanManageConfiguration();
         var model = await dbContext.Models.SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Model '{id}' was not found.");
+        currentUser.EnsureCanAccessBrand(model.BrandId);
         if (await dbContext.LabelProfiles.AnyAsync(x => x.ModelId == id, cancellationToken)
             || await dbContext.InspectionSessions.AnyAsync(x => x.ModelId == id, cancellationToken))
         {

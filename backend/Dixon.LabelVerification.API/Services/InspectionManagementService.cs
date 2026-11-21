@@ -18,7 +18,8 @@ public sealed class InspectionManagementService(
     IInspectionWorkflowService inspectionWorkflowService,
     IWebHostEnvironment environment,
     IConfiguration configuration,
-    ILogger<InspectionManagementService> logger) : IInspectionManagementService
+    ILogger<InspectionManagementService> logger,
+    AuthenticatedUserContext currentUser) : IInspectionManagementService
 {
     private readonly string _storageRoot = InspectionStoragePaths.ResolveRoot(configuration, environment);
 
@@ -28,6 +29,7 @@ public sealed class InspectionManagementService(
         string? ipAddress,
         CancellationToken cancellationToken)
     {
+        currentUser.EnsureCanAccessBrand(request.BrandId);
         await using var transaction = await db.Database.BeginTransactionAsync(
             System.Data.IsolationLevel.Serializable, cancellationToken);
 
@@ -39,7 +41,7 @@ public sealed class InspectionManagementService(
             throw new InspectionConflictException("Only active brands and models can be inspected.");
         }
 
-        if (!await db.Users.AnyAsync(x => x.Id == operatorUserId && x.IsActive, cancellationToken))
+        if (!await db.Users.AnyAsync(x => x.Id == operatorUserId, cancellationToken))
         {
             throw new InspectionValidationException("The authenticated operator account is unavailable.");
         }
@@ -111,11 +113,16 @@ public sealed class InspectionManagementService(
     public async Task<PagedInspectionResponse> GetAllAsync(
         InspectionListQuery query,
         Guid userId,
-        bool isSupervisor,
+        string role,
+        Guid? brandId,
         CancellationToken cancellationToken)
     {
+        if (userId != currentUser.UserId || role != currentUser.Role || brandId != currentUser.BrandId)
+            throw new UnauthorizedAccessException("The inspection query does not match the authenticated account.");
+        if (query.BrandId.HasValue)
+            currentUser.EnsureCanAccessBrand(query.BrandId.Value);
         var inspections = InspectionQueryScope.Apply(
-                db.InspectionSessions.AsNoTracking(), userId, isSupervisor)
+                db.InspectionSessions.AsNoTracking(), userId, role, brandId)
             .Include(x => x.Brand).Include(x => x.Model).AsQueryable();
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -170,11 +177,12 @@ public sealed class InspectionManagementService(
         var inspection = await db.InspectionSessions.Include(x => x.Brand).Include(x => x.Model)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new InspectionNotFoundException($"Inspection '{id}' was not found.");
+        currentUser.EnsureCanAccessBrand(inspection.BrandId);
         if (inspection.Status is not (InspectionStatus.READY or InspectionStatus.ERROR))
             throw new InspectionConflictException("Inspection details cannot be changed after processing starts.");
         if (inspection.BrandId != request.BrandId || inspection.ModelId != request.ModelId)
             throw new InspectionConflictException("The selected model and profile versions are fixed when an inspection is created.");
-        if (!await db.Users.AnyAsync(x => x.Id == operatorUserId && x.IsActive, cancellationToken))
+        if (!await db.Users.AnyAsync(x => x.Id == operatorUserId, cancellationToken))
             throw new InspectionValidationException("The authenticated operator account is unavailable.");
 
         inspection.ProductionOrderNumber = TrimOrNull(request.ProductionOrderNumber);
@@ -404,7 +412,7 @@ public sealed class InspectionManagementService(
             ?? throw new InspectionNotFoundException($"Inspection '{inspectionId}' was not found.");
         if (inspection.Status is not (InspectionStatus.REVIEW_REQUIRED or InspectionStatus.FAIL))
             throw new InspectionConflictException("Manual corrections are allowed only after an inspection requires review or fails.");
-        if (!await db.Users.AnyAsync(x => x.Id == operatorUserId && x.IsActive, cancellationToken))
+        if (!await db.Users.AnyAsync(x => x.Id == operatorUserId, cancellationToken))
             throw new InspectionValidationException("The authenticated operator account is unavailable.");
 
         var image = inspection.Images.SingleOrDefault(x => x.Id == imageId)

@@ -20,7 +20,7 @@ public sealed class JwtTokenService(IConfiguration configuration)
             throw new InvalidOperationException("Jwt:SigningKey must contain at least 32 UTF-8 bytes.");
 
         var expiresAt = DateTimeOffset.UtcNow.AddMinutes(60);
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
@@ -29,6 +29,8 @@ public sealed class JwtTokenService(IConfiguration configuration)
             new Claim(ClaimTypes.Email, user.Email),
             new Claim(ClaimTypes.Role, user.Role)
         };
+        if (user.BrandId.HasValue)
+            claims.Add(new Claim("brand_id", user.BrandId.Value.ToString()));
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
             SecurityAlgorithms.HmacSha256);

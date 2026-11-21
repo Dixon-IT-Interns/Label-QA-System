@@ -18,7 +18,8 @@ public sealed class MasterLabelService(
     IConfiguration configuration,
     ILogger<MasterLabelService> logger,
     IModelConfigurationService modelConfigurationService,
-    IFieldComparisonService comparisonService) : IMasterLabelService
+    IFieldComparisonService comparisonService,
+    AuthenticatedUserContext currentUser) : IMasterLabelService
 {
     private readonly string _storageRoot = InspectionStoragePaths.ResolveRoot(configuration, environment);
 
@@ -31,9 +32,21 @@ public sealed class MasterLabelService(
             .Include(x => x.Fields)
             .AsQueryable();
         if (brandId.HasValue)
+        {
+            currentUser.EnsureCanAccessBrand(brandId.Value);
             query = query.Where(x => x.BrandId == brandId.Value);
+        }
+        else if (!currentUser.IsAdmin)
+        {
+            var assignedBrandId = currentUser.BrandId
+                ?? throw new UnauthorizedAccessException("The authenticated account has no assigned brand.");
+            query = query.Where(x => x.BrandId == assignedBrandId);
+        }
         if (modelId.HasValue)
+        {
+            await EnsureModelAccessAsync(modelId.Value, cancellationToken);
             query = query.Where(x => x.ModelId == modelId.Value);
+        }
 
         var labels = await query
             .OrderBy(x => x.Model.Code)
@@ -49,8 +62,7 @@ public sealed class MasterLabelService(
     public async Task<MasterLabelAvailabilityResponse> GetAvailabilityAsync(
         Guid modelId, CancellationToken cancellationToken)
     {
-        if (!await db.Models.AnyAsync(x => x.Id == modelId, cancellationToken))
-            throw new InspectionNotFoundException($"Model '{modelId}' was not found.");
+        await EnsureModelAccessAsync(modelId, cancellationToken);
 
         var configuredTypes = await db.MasterLabels.AsNoTracking()
             .Where(x => x.ModelId == modelId)
@@ -74,6 +86,8 @@ public sealed class MasterLabelService(
     public async Task<MasterLabelPairResponse> SavePairAsync(
         SaveMasterLabelPairRequest request, Guid userId, CancellationToken cancellationToken)
     {
+        currentUser.EnsureCanManageConfiguration();
+        currentUser.EnsureCanAccessBrand(request.BrandId);
         var model = await db.Models.Include(x => x.Brand)
             .SingleOrDefaultAsync(
                 x => x.Id == request.ModelId && x.BrandId == request.BrandId,
@@ -81,7 +95,7 @@ public sealed class MasterLabelService(
             ?? throw new InspectionValidationException("The selected model does not belong to the selected brand.");
         if (!model.IsActive || !model.Brand.IsActive)
             throw new InspectionConflictException("Only active brands and models can have master labels.");
-        if (!await db.Users.AnyAsync(x => x.Id == userId && x.IsActive, cancellationToken))
+        if (!await db.Users.AnyAsync(x => x.Id == userId, cancellationToken))
             throw new InspectionValidationException("The authenticated supervisor account is unavailable.");
 
         var co = await PrepareMasterLabelAsync(model, LabelType.CO, request.CoFile, cancellationToken);
@@ -313,6 +327,8 @@ public sealed class MasterLabelService(
     public async Task<DetectedModelResponse> DetectModelAsync(
         DetectModelRequest request, CancellationToken cancellationToken)
     {
+        currentUser.EnsureCanManageConfiguration();
+        currentUser.EnsureCanAccessBrand(request.BrandId);
         if (request.File.Length is <= 0 or > ImageFileInspector.MaximumFileSizeBytes)
             throw new InspectionValidationException("Images must be non-empty and 20 MB or smaller.");
         var brand = await db.Brands.AsNoTracking()
@@ -324,32 +340,15 @@ public sealed class MasterLabelService(
         var (contentType, _, _) =
             ImageFileInspector.Inspect(bytes, request.File.FileName, request.File.ContentType);
 
-        using var content = new MultipartFormDataContent();
-        var imageContent = new ByteArrayContent(bytes);
-        imageContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-        content.Add(imageContent, "file", request.File.FileName);
-        content.Add(new StringContent(JsonSerializer.Serialize(new[]
+        var result = await ExtractModelOcrAsync(
+            bytes, contentType, request.File.FileName, LabelType.CO, cancellationToken);
+        var modelField = FindDetectedModelField(result);
+        if (modelField is null)
         {
-            new
-            {
-                field_name = "MODEL_NO",
-                display_name = "Model No.",
-                aliases = new[] { "Model", "Model No", "Model Number", "Model Code", "Product Model", "Product Name" },
-                confidence_threshold = 0.55
-            }
-        })), "field_config");
-        using var response = await httpClientFactory.CreateClient("OcrService")
-            .PostAsync("ocr/extract", content, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-            throw new InspectionProcessingException(
-                $"OCR service returned HTTP {(int)response.StatusCode} while detecting the model: {await ReadOcrErrorAsync(response, cancellationToken)}");
-        var result = await response.Content.ReadFromJsonAsync<OcrServiceResponse>(
-            cancellationToken: cancellationToken)
-            ?? throw new InspectionProcessingException("OCR service returned an empty response.");
-        if (result.Status is not ("PROCESSING" or "REVIEW_REQUIRED")
-            || string.IsNullOrWhiteSpace(result.Engine)
-            || result.Lines is null)
-            throw new InspectionProcessingException("OCR service returned an invalid response.");
+            result = await ExtractModelOcrAsync(
+                bytes, contentType, request.File.FileName, LabelType.CONFIG, cancellationToken);
+            modelField = FindDetectedModelField(result);
+        }
 
         var ocrText = string.IsNullOrWhiteSpace(result.RawText)
             ? string.Join(" ", result.Lines.Select(line => line.Text))
@@ -388,15 +387,10 @@ public sealed class MasterLabelService(
                 detected.Id, detected.BrandId, detected.Code, detected.Name, false);
         }
 
-        var modelField = result.FieldCandidates?.FirstOrDefault(candidate =>
-            string.Equals(candidate.FieldName, "MODEL_NO", StringComparison.OrdinalIgnoreCase)
-            && candidate.Status == "DETECTED"
-            && candidate.Confidence >= 0.55
-            && !string.IsNullOrWhiteSpace(candidate.Value));
         var modelCode = ModelCodeExtractor.Extract(modelField?.Value);
         if (modelCode is null)
             throw new InspectionConflictException(
-                "OCR could not confidently read a new model number. Select an existing model or upload a clearer label.");
+                "COO and Config OCR could not confidently read a model number. Select an existing model or upload a clearer label.");
 
         var existingModel = await db.Models.AsNoTracking()
             .Where(model => model.BrandId == brand.Id && model.Code == modelCode)
@@ -437,9 +431,94 @@ public sealed class MasterLabelService(
         }
     }
 
+    private async Task<OcrServiceResponse> ExtractModelOcrAsync(
+        byte[] bytes,
+        string contentType,
+        string fileName,
+        LabelType labelType,
+        CancellationToken cancellationToken)
+    {
+        using var content = new MultipartFormDataContent();
+        var imageContent = new ByteArrayContent(bytes);
+        imageContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        content.Add(imageContent, "file", fileName);
+        content.Add(new StringContent(JsonSerializer.Serialize(GetModelDetectionFields(labelType))), "field_config");
+        content.Add(new StringContent(labelType.ToString()), "label_type");
+
+        using var response = await httpClientFactory.CreateClient("OcrService")
+            .PostAsync("ocr/extract", content, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InspectionProcessingException(
+                $"OCR service returned HTTP {(int)response.StatusCode} while detecting the model from {labelType}: {await ReadOcrErrorAsync(response, cancellationToken)}");
+
+        var result = await response.Content.ReadFromJsonAsync<OcrServiceResponse>(
+            cancellationToken: cancellationToken)
+            ?? throw new InspectionProcessingException("OCR service returned an empty response.");
+        if (result.Status is not ("PROCESSING" or "REVIEW_REQUIRED")
+            || string.IsNullOrWhiteSpace(result.Engine)
+            || result.Lines is null)
+            throw new InspectionProcessingException("OCR service returned an invalid response.");
+        return result;
+    }
+
+    private static object[] GetModelDetectionFields(LabelType labelType) =>
+        labelType switch
+        {
+            LabelType.CO =>
+            [
+                new
+                {
+                    field_name = "MODEL_NO",
+                    display_name = "Model No.",
+                    aliases = new[] { "Model", "Model Number", "Product Model" },
+                    confidence_threshold = 0.55
+                },
+                new
+                {
+                    field_name = "QR_CODE",
+                    display_name = "QR Code",
+                    aliases = new[] { "QR", "QRCode" },
+                    confidence_threshold = 0.65
+                },
+                new
+                {
+                    field_name = "PART_NUMBER",
+                    display_name = "P/N",
+                    aliases = new[] { "PN", "Part No", "Part Number" },
+                    confidence_threshold = 0.65
+                }
+            ],
+            LabelType.CONFIG =>
+            [
+                new
+                {
+                    field_name = "MODEL_NO",
+                    display_name = "Model No.",
+                    aliases = new[] { "Model", "Model Number", "Product Model" },
+                    confidence_threshold = 0.55
+                },
+                new
+                {
+                    field_name = "QUEUE_NO",
+                    display_name = "Queue No.",
+                    aliases = new[] { "Queue", "Queue Number", "Q No" },
+                    confidence_threshold = 0.55
+                }
+            ],
+            _ => throw new ArgumentOutOfRangeException(nameof(labelType), labelType, null)
+        };
+
+    private static OcrFieldCandidate? FindDetectedModelField(OcrServiceResponse result) =>
+        result.FieldCandidates?.FirstOrDefault(candidate =>
+            string.Equals(candidate.FieldName, "MODEL_NO", StringComparison.OrdinalIgnoreCase)
+            && candidate.Status == "DETECTED"
+            && candidate.Confidence >= 0.55
+            && !string.IsNullOrWhiteSpace(candidate.Value));
+
     public async Task<MasterLabelImageContent> GetImageAsync(
         Guid modelId, LabelType labelType, CancellationToken cancellationToken)
     {
+        await EnsureModelAccessAsync(modelId, cancellationToken);
         var master = await db.MasterLabels.AsNoTracking()
             .SingleOrDefaultAsync(
                 x => x.ModelId == modelId && x.LabelType == labelType,
@@ -451,6 +530,16 @@ public sealed class MasterLabelService(
             throw new InspectionNotFoundException("The stored master label image is unavailable.");
         return new MasterLabelImageContent(
             File.OpenRead(path), master.ContentType, master.OriginalFileName);
+    }
+
+    private async Task EnsureModelAccessAsync(Guid modelId, CancellationToken cancellationToken)
+    {
+        var brandId = await db.Models.AsNoTracking()
+            .Where(x => x.Id == modelId)
+            .Select(x => (Guid?)x.BrandId)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new InspectionNotFoundException($"Model '{modelId}' was not found.");
+        currentUser.EnsureCanAccessBrand(brandId);
     }
 
     private async Task<(OcrServiceResponse Ocr, OcrBarcodeResponse? Barcode)> ExtractOcrAsync(

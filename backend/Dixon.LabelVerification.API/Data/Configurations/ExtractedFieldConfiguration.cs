@@ -21,6 +21,6 @@ public sealed class ExtractedFieldConfiguration : IEntityTypeConfiguration<Extra
         entity.HasOne(x => x.FieldDefinition).WithMany().HasForeignKey(x => x.FieldDefinitionId)
             .OnDelete(DeleteBehavior.Restrict);
         entity.HasOne(x => x.CorrectedByUser).WithMany().HasForeignKey(x => x.CorrectedByUserId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

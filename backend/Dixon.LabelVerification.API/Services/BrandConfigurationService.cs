@@ -8,11 +8,19 @@ namespace Dixon.LabelVerification.API.Services;
 
 public sealed class BrandConfigurationService(
     LabelVerificationDbContext dbContext,
+    AuthenticatedUserContext currentUser,
     ILogger<BrandConfigurationService> logger) : IBrandConfigurationService
 {
     public async Task<IReadOnlyList<BrandResponse>> GetAllAsync(CancellationToken cancellationToken)
     {
-        var brands = await dbContext.Brands.AsNoTracking()
+        var brandsQuery = dbContext.Brands.AsNoTracking().AsQueryable();
+        if (!currentUser.IsAdmin)
+        {
+            var brandId = currentUser.BrandId
+                ?? throw new UnauthorizedAccessException("The authenticated account has no assigned brand.");
+            brandsQuery = brandsQuery.Where(x => x.Id == brandId);
+        }
+        var brands = await brandsQuery
             .OrderBy(x => x.Name)
             .ToListAsync(cancellationToken);
         return brands.Select(ToResponse).ToList();
@@ -23,11 +31,13 @@ public sealed class BrandConfigurationService(
         var brand = await dbContext.Brands.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Brand '{id}' was not found.");
+        currentUser.EnsureCanAccessBrand(brand.Id);
         return ToResponse(brand);
     }
 
     public async Task<BrandResponse> CreateAsync(BrandRequest request, CancellationToken cancellationToken)
     {
+        currentUser.EnsureAdmin();
         var code = request.Code.Trim().ToUpperInvariant();
         var name = request.Name.Trim();
         await EnsureUniqueAsync(code, name, null, cancellationToken);
@@ -50,6 +60,7 @@ public sealed class BrandConfigurationService(
         BrandRequest request,
         CancellationToken cancellationToken)
     {
+        currentUser.EnsureAdmin();
         var brand = await dbContext.Brands.SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Brand '{id}' was not found.");
         var code = request.Code.Trim().ToUpperInvariant();
@@ -67,14 +78,16 @@ public sealed class BrandConfigurationService(
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
+        currentUser.EnsureAdmin();
         var brand = await dbContext.Brands.SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException($"Brand '{id}' was not found.");
         if (await dbContext.Models.AnyAsync(x => x.BrandId == id, cancellationToken)
             || await dbContext.LabelProfiles.AnyAsync(x => x.BrandId == id, cancellationToken)
-            || await dbContext.InspectionSessions.AnyAsync(x => x.BrandId == id, cancellationToken))
+            || await dbContext.InspectionSessions.AnyAsync(x => x.BrandId == id, cancellationToken)
+            || await dbContext.Users.AnyAsync(x => x.BrandId == id, cancellationToken))
         {
             throw new ConfigurationConflictException(
-                "This brand is referenced by models, label profiles, or inspections and cannot be deleted.");
+                "This brand is assigned to users or referenced by models, label profiles, or inspections and cannot be deleted.");
         }
 
         dbContext.Brands.Remove(brand);

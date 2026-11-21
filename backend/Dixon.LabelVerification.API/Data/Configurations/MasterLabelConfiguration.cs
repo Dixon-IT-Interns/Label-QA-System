@@ -33,6 +33,6 @@ public sealed class MasterLabelConfiguration : IEntityTypeConfiguration<MasterLa
         entity.HasOne(x => x.LabelProfile).WithMany()
             .HasForeignKey(x => x.LabelProfileId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne(x => x.UploadedByUser).WithMany()
-            .HasForeignKey(x => x.UploadedByUserId).OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(x => x.UploadedByUserId).OnDelete(DeleteBehavior.SetNull);
     }
 }

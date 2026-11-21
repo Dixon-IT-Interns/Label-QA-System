@@ -72,12 +72,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var db = context.HttpContext.RequestServices.GetRequiredService<LabelVerificationDbContext>();
                 var user = await db.Users.AsNoTracking()
                     .SingleOrDefaultAsync(x => x.Id == userId, context.HttpContext.RequestAborted);
-                if (user is null || !user.IsActive || !string.Equals(user.Role, role, StringComparison.Ordinal))
-                    context.Fail("The account is inactive or its access has changed.");
+                var brandIdValue = context.Principal?.FindFirst("brand_id")?.Value;
+                var hasValidBrandClaim = role == ApplicationRoles.Admin
+                    ? brandIdValue is null && user?.BrandId is null
+                    : Guid.TryParse(brandIdValue, out var tokenBrandId)
+                        && user?.BrandId == tokenBrandId;
+                if (user is null
+                    || !string.Equals(user.Role, role, StringComparison.Ordinal)
+                    || !hasValidBrandClaim
+                    || !ApplicationRoles.HasValidBrandAssignment(user.Role, user.BrandId))
+                    context.Fail("The account or its role/brand assignment is invalid or has changed.");
             }
         };
     });
 builder.Services.AddAuthorization();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<AuthenticatedUserContext>();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddSingleton<PasswordResetEmailSender>();
@@ -129,7 +139,7 @@ if (args.Contains("--bootstrap-admin", StringComparer.Ordinal))
         || password.Length < 12)
     {
         throw new InvalidOperationException(
-            "Set BOOTSTRAP_ADMIN_FULL_NAME, BOOTSTRAP_ADMIN_USERNAME, BOOTSTRAP_ADMIN_EMAIL, and a 12+ character BOOTSTRAP_ADMIN_PASSWORD to bootstrap the initial Supervisor.");
+            "Set BOOTSTRAP_ADMIN_FULL_NAME, BOOTSTRAP_ADMIN_USERNAME, BOOTSTRAP_ADMIN_EMAIL, and a 12+ character BOOTSTRAP_ADMIN_PASSWORD to bootstrap an Admin account.");
     }
 
     await using var scope = app.Services.CreateAsyncScope();
@@ -137,23 +147,22 @@ if (args.Contains("--bootstrap-admin", StringComparer.Ordinal))
     var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
     await using var transaction = await db.Database.BeginTransactionAsync(
         System.Data.IsolationLevel.Serializable);
-    if (await db.Users.AnyAsync())
-        throw new InvalidOperationException("Supervisor bootstrap is only allowed when no users exist.");
+    if (await db.Users.AnyAsync(x => x.Role == ApplicationRoles.Admin))
+        throw new InvalidOperationException("An Admin account already exists.");
 
-    var supervisor = new User
+    var admin = new User
     {
         FullName = fullName.Trim(),
         Username = username.Trim(),
         Email = email.Trim(),
-        Role = ApplicationRoles.Supervisor,
-        PasswordHash = string.Empty,
-        IsActive = true
+        Role = ApplicationRoles.Admin,
+        PasswordHash = string.Empty
     };
-    supervisor.PasswordHash = passwordHasher.HashPassword(supervisor, password);
-    db.Users.Add(supervisor);
+    admin.PasswordHash = passwordHasher.HashPassword(admin, password);
+    db.Users.Add(admin);
     await db.SaveChangesAsync();
     await transaction.CommitAsync();
-    Console.WriteLine($"Initial supervisor '{supervisor.Username}' created.");
+    Console.WriteLine($"Admin '{admin.Username}' created.");
     return;
 }
 
