@@ -104,7 +104,7 @@ builder.Services.AddHttpClient("OcrService", client =>
     client.Timeout = TimeSpan.FromMinutes(3);
 });
 builder.Services.AddCors(options => options.AddPolicy("ViteDevelopment", policy =>
-    policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
+    policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173", "http://10.52.2.78:5173", "http://192.168.56.1:5173")
         .AllowAnyHeader()
         .AllowAnyMethod()));
 
