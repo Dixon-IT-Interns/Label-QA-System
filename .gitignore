@@ -13,3 +13,5 @@ backend/Dixon.LabelVerification.API/appsettings.Local.json
 storage/inspections/*
 !storage/inspections/.gitkeep
 storage/ocr/*
+New Frontend/.env
+.env
