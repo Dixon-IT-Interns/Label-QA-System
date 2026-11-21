@@ -1,8 +1,6 @@
 pipeline {
     agent any
-    environment {
-        DOTNET_ROOT = "C:\\Users\\Dxnintents\\.dotnet"
-    }
+    
     stages {
         stage('Checkout') {
             steps {
@@ -14,7 +12,7 @@ pipeline {
             steps {
                 bat '''
                 cd backend\\Dixon.LabelVerification.API
-                "%USERPROFILE%\\.dotnet\\dotnet.exe" publish -c Release -o C:\\Deploy\\LabelQA\\backend
+                "C:\\Users\\Dxnintents\\.dotnet\\dotnet.exe" publish -c Release -o C:\\Deploy\\LabelQA\\backend
                 '''
             }
         }
