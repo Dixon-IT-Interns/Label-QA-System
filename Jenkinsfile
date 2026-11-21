@@ -29,10 +29,12 @@ pipeline {
             }
         }
         stage('Deploy') {
-            steps {
-                bat 'powershell -ExecutionPolicy Bypass -File jenkins\\deploy.ps1'
-            }
+    steps {
+        withEnv(["BUILD_ID=dontKillMe", "JENKINS_NODE_COOKIE=dontKillMe"]) {
+            bat 'powershell -ExecutionPolicy Bypass -File jenkins\\deploy.ps1'
         }
+    }
+}
     }
     post {
         success {
