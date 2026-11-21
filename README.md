@@ -12,8 +12,8 @@ React + Vite ── Axios/JWT ──> ASP.NET Core .NET 10 ──> SQL Server
 ```
 
 - **Frontend:** React, Vite, React Router, Axios, and Lucide React. Screens cover login, dashboard, new inspection, inspection history/details, brands, models, profiles/fields, users, and system settings.
-- **Backend:** .NET 10 Web API and EF Core SQL Server provider. JWT authentication uses database-backed Admin, Operator, and Viewer roles. SQL initialization is the standalone `database/db.sql` script; the API does not run EF migrations or create the database at startup.
-- **OCR:** Python 3.11, FastAPI, Tesseract OCR via `pytesseract`, OpenCV, Pillow, and zxing-cpp. CO processing extracts only S/N, P/N, Model No., and decoded QR payloads from targeted regions; other CO text and barcode values are neither saved nor compared. CONFIG processing remains profile-targeted. The project keeps the older PaddleOCR provider as a configurable fallback via `OCR_ENGINE=paddle` but defaults to Tesseract for reliability on the current workstation setup.
+- **Backend:** .NET 10 Web API and EF Core SQL Server provider. JWT authentication supports exactly two database-backed roles: Supervisor and Operator. SQL initialization is the standalone `database/db.sql` script; the API does not run EF migrations or create the database at startup.
+- **OCR:** Python 3.11, FastAPI, Tesseract OCR via `pytesseract`, OpenCV, Pillow, and zxing-cpp. CO processing extracts only P/N, Model No., and decoded QR payloads from targeted regions; other CO text and barcode values are neither saved nor compared. CONFIG processing remains profile-targeted. The project keeps the older PaddleOCR provider as a configurable fallback via `OCR_ENGINE=paddle` but defaults to Tesseract for reliability on the current workstation setup.
 - **Storage:** Original JPEG/PNG uploads and generated PDFs are stored outside SQL Server under `storage/inspections` by default. SQL stores paths, hashes, sizes, and other metadata. Files are served only through authenticated API endpoints.
 - **Comparison policy:** OCR text is not compared line-by-line. CO compares its active configured profile fields. CONFIG compares only `MODEL_NO` and `QUEUE_NO`: OCR is cropped to x=8–92%, y=4–17% for the top model and x=8–92%, y=87–95% for the below-barcode human-readable Queue No. Barcodes remain separate metadata and are never substituted for Queue No. Blue annotation-like pixels are masked only from the OCR working copy; original images remain unchanged. Missing, ambiguous, or low-confidence configured fields require review; unrelated OCR text and image-level warnings do not change a comparison result.
 
@@ -51,38 +51,19 @@ From the repository root, run the idempotent database initializer against the in
 sqlcmd -S 10.52.2.78 -U Sakshamjain -d master -C -i .\database\db.sql
 ```
 
-`sqlcmd` prompts for the SQL login password because it is not included in the command. The login must have permission to create the database. `database/db.sql` creates `DixonLabelVerificationDB`, schema, indexes, role/status/settings seeds, supported brands, and the sample HP model/profiles. The HP CO profile compares only S/N, P/N, Model No., and QR Code; its CONFIG profile compares only Model No. and Queue No. Re-run the initializer to apply its idempotent schema and sample-profile updates. Do not point setup commands at a production instance without review and approval.
+`sqlcmd` prompts for the SQL login password because it is not included in the command. The login must have permission to create the database. `database/db.sql` creates `DixonLabelVerificationDB`, schema, indexes, role/status/settings seeds, supported brands, and the sample HP model/profiles. The default CO fields are Model No., QR Code, and P/N; the default CONFIG fields are Model No. and Queue No. The API automatically provisions these defaults for a model when a Supervisor first saves one of its master labels, so profiles do not need to be created manually for every model. Re-run the initializer to apply its idempotent schema and sample-profile updates. Do not point setup commands at a production instance without review and approval.
 
 ## 2. Configure and bootstrap the backend
 
-In a PowerShell terminal from the repository root, set secrets for this process. Use a secret manager for persistent or deployed environments:
+The backend loads `appsettings.Local.json` automatically for machine-local settings. The repository includes `backend/Dixon.LabelVerification.API/appsettings.Local.example.json`; copy it to `backend/Dixon.LabelVerification.API/appsettings.Local.json` once, then replace `REPLACE_WITH_SQL_PASSWORD` with the SQL Server password. This local file is git-ignored, so the connection settings persist between runs without putting the password in checked-in files or re-entering it in each terminal. Keep the file on your machine and never commit it. Environment variables can still override local settings when needed.
 
-```powershell
-$secureDbPassword = Read-Host "SQL Server password for Sakshamjain" -AsSecureString
-$dbPassword = [System.Net.NetworkCredential]::new("", $secureDbPassword).Password
-$connection = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
-$connection["Data Source"] = "tcp:10.52.2.78,1433"
-$connection["Initial Catalog"] = "DixonLabelVerificationDB"
-$connection["User ID"] = "Sakshamjain"
-$connection["Password"] = $dbPassword
-$connection["Encrypt"] = $true
-$connection["TrustServerCertificate"] = $true
-$connection["MultipleActiveResultSets"] = $true
-$env:ConnectionStrings__DefaultConnection = $connection.ConnectionString
-Remove-Variable dbPassword, secureDbPassword, connection
-$env:Jwt__SigningKey = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
-$env:OCR__BaseUrl = "http://127.0.0.1:8000/"
-$env:Storage__InspectionDirectory = (Join-Path (Get-Location) "storage\inspections")
-$env:Frontend__BaseUrl = "http://localhost:5173"
-```
+The server requires encryption; `TrustServerCertificate=True` matches the provided connection dialog. Development generates a temporary signing key if none is configured, so tokens become invalid after the API restarts. Configure a persistent secret-managed JWT signing key for production.
 
-The checked-in settings identify the supplied SQL Server host, database, and username, but deliberately contain no password. The environment connection string above supplies it for this PowerShell process. Never put credentials in checked-in settings. The server requires encryption; `TrustServerCertificate=True` matches the provided connection dialog. Development generates a temporary signing key if none is configured, so tokens become invalid when the API restarts. Configure a persistent secret-managed JWT signing key for production.
+Public sign-up is disabled. A Supervisor creates and manages Operator accounts from User Management; password reset and Google sign-in are limited to active existing accounts. Google sign-in requires the verified Google email to match the account. To enable Google sign-in, set backend `Google__ClientId` and frontend `VITE_GOOGLE_CLIENT_ID` to the same Google OAuth web client ID. To enable password-reset email, configure `Smtp__Host`, `Smtp__Port` (typically `587`), `Smtp__UserName`, `Smtp__Password`, `Smtp__FromEmail`, and optionally `Smtp__FromName` / `Smtp__UseSsl` through environment variables or a secret store. Set `Frontend__BaseUrl` to the URL users open in their browser. Do not commit provider credentials.
 
-The public sign-up endpoint creates active Operator accounts. Google sign-in is limited to active users whose verified Google email already matches their account. To enable Google sign-in, set backend `Google__ClientId` and frontend `VITE_GOOGLE_CLIENT_ID` to the same Google OAuth web client ID. To enable password-reset email, configure `Smtp__Host`, `Smtp__Port` (typically `587`), `Smtp__UserName`, `Smtp__Password`, `Smtp__FromEmail`, and optionally `Smtp__FromName` / `Smtp__UseSsl` through environment variables or a secret store. Set `Frontend__BaseUrl` to the URL users open in their browser. Do not commit provider credentials.
+Back up an existing database, then re-run `database/db.sql` before deploying these authentication changes. The initializer adds the password-reset columns, maps existing Admin users to Supervisor and Viewer users to Operator, removes obsolete role catalog entries, and enforces the two supported roles without deleting users or inspections. It does not apply EF migration history.
 
-Re-run `database/db.sql` to add the password-reset token columns to an existing database before deploying these authentication endpoints.
-
-Bootstrap the first administrator once, after the SQL script has run. The bootstrap process refuses to run if any users already exist:
+Bootstrap the first Supervisor once, after the SQL script has run. The one-time command uses the existing `BOOTSTRAP_ADMIN_*` environment variable names for compatibility, but creates a Supervisor. It refuses to run if any users already exist:
 
 ```powershell
 $env:BOOTSTRAP_ADMIN_FULL_NAME = "System Administrator"
@@ -94,7 +75,7 @@ Set-Location .\backend
 dotnet run --project .\Dixon.LabelVerification.API -- --bootstrap-admin
 ```
 
-The password is hashed using ASP.NET Core Identity's password hasher. Clear bootstrap environment variables after the one-time command. Then start the API in a new process with the regular connection/JWT/OCR/storage environment values:
+The password is hashed using ASP.NET Core Identity's password hasher. Clear bootstrap environment variables after the one-time command. Then start the API; its database connection is read from the local settings file:
 
 ```powershell
 dotnet run --project .\Dixon.LabelVerification.API
@@ -125,7 +106,7 @@ $env:TESSERACT_CMD = "C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 The service detects that standard Windows install path automatically. Verify the executable with `& $env:TESSERACT_CMD --version` (or `tesseract --version` when it is on `PATH`).
 
-The project defaults to the Tesseract engine, which reads from a cleaned working copy and preserves raw OCR text plus structured artifacts in `storage/ocr`. Set `OCR_ENGINE=paddle` only if you intentionally want the older PaddleOCR provider. OpenCV applies preprocessing selectively (`auto`, `clahe`, `grayscale`, `otsu`, or `adaptive`) without altering the original uploaded image. Blue annotation-like pixels are masked only from OCR input and do not force a comparison review. OCR candidates are limited to active profile fields, support same-line, adjacent-column, and nearby aligned multi-line labels, and use field-specific specification patterns when labels are absent. Ambiguous configured values remain unreadable. For phone-camera captures, the HP CO profile uses a 0.45 threshold for S/N (which must be cross-checked against the decoded QR), 0.55 for Model No., and 0.65 for P/N and QR Code. Keep the label in focus, fill the frame, avoid glare, and ensure the full QR code and S/N/P/N text are visible. Conflicting serial evidence still requires review.
+The project defaults to the Tesseract engine, which reads from a cleaned working copy and preserves raw OCR text plus structured artifacts in `storage/ocr`. Set `OCR_ENGINE=paddle` only if you intentionally want the older PaddleOCR provider. OpenCV applies preprocessing selectively (`auto`, `clahe`, `grayscale`, `otsu`, or `adaptive`) without altering the original uploaded image. Blue annotation-like pixels are masked only from OCR input and do not force a comparison review. OCR candidates are limited to the active CO/CONFIG fields, support same-line, adjacent-column, and nearby aligned multi-line labels, and use field-specific specification patterns when labels are absent. Ambiguous configured values remain unreadable. Default CO thresholds are 0.55 for Model No. and 0.65 for P/N and QR Code; CONFIG fields use 0.55. P/N can be cross-checked against the decoded QR payload. Keep labels in focus, fill the frame, and avoid glare.
 
 The service health endpoint is `http://127.0.0.1:8000/health`; OpenAPI docs are at `/docs`. Optional thresholds, engine selection, and artifact storage are listed in `ocr-service/.env.example` and can be set as process environment variables. The service supports `/ocr/extract` and `/ocr/barcode`. Install the test client dependencies with `python -m pip install -r requirements-test.txt`, then run `.\.venv\Scripts\python.exe -m unittest discover -s tests -v` from `ocr-service`. The OCR API end-to-end test uses native Tesseract and generated master/actual label images.
 
@@ -156,25 +137,26 @@ Vite runs at `http://localhost:5173`. Copy `.env.example` to `.env.local` and se
 
 ## Inspection workflow
 
-1. Sign in as an Admin or Operator.
-2. Select a configured brand/model and reference information, then create an inspection.
-3. Use a regular local file picker to upload Master CO, Actual CO, Master CONFIG, and Actual CONFIG JPEG/PNG files. Each upload inserts an image and audit log without updating the inspection row; the inspection rowversion remains reserved for actual inspection changes. Re-uploading the identical image in an occupied slot is idempotent; a different image requires removing the existing slot first. There is no webcam/camera capture.
-4. Validate the four images, then explicitly process the inspection.
+1. Sign in as a Supervisor or Operator. Supervisors can view system-wide history and administer users, labels, and settings; Operators can run inspections and access only their own history and reports.
+2. Supervisors configure Master COO and Master Config as a pair from **Master Labels**. They can select an existing model or detect/create one from a COO image. Both label images are OCR-checked together: COO Model No. must match Config Model No., and COO P/N must match Config Queue No. The API saves or replaces neither label unless both comparisons pass.
+3. Select a configured brand/model and upload or capture the Actual COO and Actual Config labels. The API automatically attaches that model's saved master labels; inspection creation is blocked with a Supervisor-facing message if either master is missing or stale.
+4. Validate the saved master evidence and two actual images, then explicitly process the inspection. Master OCR is performed when the Supervisor saves/replaces a master; each inspection receives its own image/OCR snapshot so historical comparisons do not change when the master is later replaced.
 5. Review the inspection status, stage comparisons, OCR evidence, audit log, and PDF report.
 
-Brand/model/profile configuration and user/settings management require Admin. Configure at least one active CO and CONFIG profile and the expected fields/aliases for each model. OCR associates configured labels with same-line, adjacent-column, and nearby aligned multi-line values using OCR coordinates. Ambiguous or unassociated text remains review-only; OCR does not guess values from unrelated text. The system reports PASS only if all required configured fields were read above their thresholds and comparisons succeeded, and any configured serial cross-check passes.
+Brand/model/profile configuration, Master Labels, and user/settings management require Supervisor. Default CO (Model No., QR Code, P/N) and CONFIG (Model No., Queue No.) profiles are provisioned automatically per model during master-label setup; they can be overridden with active model-specific profiles. OCR associates configured labels with same-line, adjacent-column, and nearby aligned multi-line values using OCR coordinates. Ambiguous or unassociated text remains review-only; OCR does not guess values from unrelated text. The system reports PASS only if all required fields were read above their thresholds and comparisons succeeded.
 
 ## API route summary
 
-- `POST /api/auth/login`, `/api/auth/signup`, `/api/auth/google`, `/api/auth/forgot-password`, `/api/auth/reset-password`; `GET /api/auth/me`
+- `POST /api/auth/login`, `/api/auth/google`, `/api/auth/forgot-password`, `/api/auth/reset-password`; `GET /api/auth/me`. Public sign-up is disabled.
 - `GET /api/dashboard`
 - `GET|POST /api/brands`; `GET|PUT|DELETE /api/brands/{id}`
 - `GET|POST /api/models`; `GET|PUT|DELETE /api/models/{id}`
 - `GET|POST /api/label-profiles`; profile field CRUD under `/api/label-profiles/{id}/fields` and `/api/field-definitions`
+- Supervisor-only `GET /api/master-labels`, `GET /api/master-labels/models/{modelId}`, `PUT /api/master-labels/{modelId}/pair`, `POST /api/master-labels/detect-model`, and `GET /api/master-labels/{modelId}/{labelType}/image`; authenticated Operators and Supervisors can check model availability
 - `GET|POST /api/inspections`; `GET /api/inspections/{id}` and history filtering/pagination
 - Inspection image upload, list, authorized retrieval, and delete under `/api/inspections/{id}/images`
 - `POST /api/inspections/{id}/validate|process|cancel`; `GET /api/inspections/{id}/logs|report`
-- Admin-only `GET|POST /api/users`; `PUT /api/users/{id}`; `GET /api/settings`; `PUT /api/settings/ocr-confidence`
+- Supervisor-only `GET|POST /api/users`; `PUT /api/users/{id}` (only Operator accounts); `GET /api/settings`; `PUT /api/settings/ocr-confidence`
 
 ## Validation and genuine limitations
 

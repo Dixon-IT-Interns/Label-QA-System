@@ -1,0 +1,47 @@
+{
+  "status": "completed",
+  "overallResult": "FAIL",
+  "inspectionId": "bb17eca6-51ef-4dff-8330-4c706b9e12a9",
+  "fields": [
+    {
+      "field": "MODEL_NO",
+      "master": "HP Laptop 15-fd1652TU",
+      "actual": "HP Laptop 15-fd1652TU",
+      "masterNormalized": "HP LAPTOP 15-FD1652TU",
+      "actualNormalized": "HP LAPTOP 15-FD1652TU",
+      "result": "PASS"
+    },
+    {
+      "field": "QR_CODE",
+      "master": "https;//hpsmart.com/QRC/I0B/01/885981339741/21/1N46350HJ9?240=E52PYPA%23ACJ\u0026422=156",
+      "actual": "https;//hpsmart.com/QRC/I0B/01/885981339741/21/1N46350HJ9?240=E52PYPA%23ACJ\u0026422=156",
+      "masterNormalized": "https;//hpsmart.com/QRC/I0B/01/885981339741/21/1N46350HJ9?240=E52PYPA%23ACJ\u0026422=156",
+      "actualNormalized": "https;//hpsmart.com/QRC/I0B/01/885981339741/21/1N46350HJ9?240=E52PYPA%23ACJ\u0026422=156",
+      "result": "PASS"
+    },
+    {
+      "field": "PART_NUMBER",
+      "master": "E52PYPA#ACJ",
+      "actual": "E52PYPA#ACJ",
+      "masterNormalized": "E52PYPA#ACJ",
+      "actualNormalized": "E52PYPA#ACJ",
+      "result": "PASS"
+    },
+    {
+      "field": "MODEL_NO",
+      "master": "HP Laptop 15-fd1654TU",
+      "actual": "HP Laptop 15-fd1654TU",
+      "masterNormalized": "HP LAPTOP 15-FD1654TU",
+      "actualNormalized": "HP LAPTOP 15-FD1654TU",
+      "result": "PASS"
+    },
+    {
+      "field": "QUEUE_NO",
+      "master": "E52PWPA#ACJ",
+      "actual": "E52PWPA#ACJ",
+      "masterNormalized": "E52PWPA#ACJ",
+      "actualNormalized": "E52PWPA#ACJ",
+      "result": "PASS"
+    }
+  ]
+}

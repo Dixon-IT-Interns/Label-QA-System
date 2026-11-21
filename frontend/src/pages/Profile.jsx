@@ -6,7 +6,7 @@ function Profile() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const initials = user?.fullName?.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'U'
-  const isAdmin = user?.role === 'Admin'
+  const isAdmin = user?.role === 'Supervisor'
 
   function signOut() {
     logout()

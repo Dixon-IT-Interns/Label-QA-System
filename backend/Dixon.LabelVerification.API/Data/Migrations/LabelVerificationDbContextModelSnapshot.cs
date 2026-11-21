@@ -200,6 +200,116 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("FieldAliases", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d30"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d10"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "Product Model"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d31"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d10"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "Model Number"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d32"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d11"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "CPU"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d33"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d12"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "SSD"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d34"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d13"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "RAM"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d35"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d14"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "Screen"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d36"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d15"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "Battery Capacity"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d37"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d20"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "P/N"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d38"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d20"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "Product Number"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d39"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d21"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "PRDN Order"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d3a"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d21"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "PRON Order"
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d3b"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FieldDefinitionId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d21"),
+                            IsActive = true,
+                            Language = "en",
+                            Value = "Production Order"
+                        });
                 });
 
             modelBuilder.Entity("Dixon.LabelVerification.API.Entities.FieldComparison", b =>
@@ -351,11 +461,166 @@ namespace Dixon.LabelVerification.API.Data.Migrations
 
                     b.ToTable("FieldDefinitions", null, t =>
                         {
-                            t.HasCheckConstraint("CK_FieldDefinitions_MinimumConfidence", "[MinimumConfidence] >= 0 AND [MinimumConfidence] <= 1");
+                            t.HasCheckConstraint("CK_FieldDefinitions_MinimumConfidence", "[OCRConfidenceThreshold] >= 0 AND [OCRConfidenceThreshold] <= 1");
 
                             t.HasCheckConstraint("CK_FieldDefinitions_NumericAbsoluteTolerance", "[NumericAbsoluteTolerance] >= 0");
 
                             t.HasCheckConstraint("CK_FieldDefinitions_NumericRelativeTolerance", "[NumericRelativeTolerance] >= 0 AND [NumericRelativeTolerance] <= 1");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d10"),
+                            ComparisonStrategy = "Identifier",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Critical = true,
+                            DataType = "Text",
+                            DisplayName = "Model",
+                            DisplayOrder = 1,
+                            FieldName = "MODEL",
+                            IsActive = true,
+                            LabelProfileId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d08"),
+                            NumericAbsoluteTolerance = 0m,
+                            NumericRelativeTolerance = 0m,
+                            OcrConfidenceThreshold = 0.5,
+                            Required = true
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d11"),
+                            ComparisonStrategy = "NormalizedText",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Critical = true,
+                            DataType = "Text",
+                            DisplayName = "Processor",
+                            DisplayOrder = 2,
+                            FieldName = "PROCESSOR",
+                            IsActive = true,
+                            LabelProfileId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d08"),
+                            NumericAbsoluteTolerance = 0m,
+                            NumericRelativeTolerance = 0m,
+                            OcrConfidenceThreshold = 0.5,
+                            Required = true
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d12"),
+                            ComparisonStrategy = "NormalizedText",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Critical = true,
+                            DataType = "Text",
+                            DisplayName = "Storage",
+                            DisplayOrder = 3,
+                            FieldName = "STORAGE",
+                            IsActive = true,
+                            LabelProfileId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d08"),
+                            NumericAbsoluteTolerance = 0m,
+                            NumericRelativeTolerance = 0m,
+                            OcrConfidenceThreshold = 0.5,
+                            Required = true
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d13"),
+                            ComparisonStrategy = "NormalizedText",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Critical = true,
+                            DataType = "Text",
+                            DisplayName = "Memory",
+                            DisplayOrder = 4,
+                            FieldName = "MEMORY",
+                            IsActive = true,
+                            LabelProfileId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d08"),
+                            NumericAbsoluteTolerance = 0m,
+                            NumericRelativeTolerance = 0m,
+                            OcrConfidenceThreshold = 0.5,
+                            Required = true
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d14"),
+                            ComparisonStrategy = "NormalizedText",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Critical = true,
+                            DataType = "Text",
+                            DisplayName = "Display",
+                            DisplayOrder = 5,
+                            FieldName = "DISPLAY",
+                            IsActive = true,
+                            LabelProfileId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d08"),
+                            NumericAbsoluteTolerance = 0m,
+                            NumericRelativeTolerance = 0m,
+                            OcrConfidenceThreshold = 0.5,
+                            Required = true
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d15"),
+                            ComparisonStrategy = "NormalizedText",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Critical = true,
+                            DataType = "Text",
+                            DisplayName = "Battery",
+                            DisplayOrder = 6,
+                            FieldName = "BATTERY",
+                            IsActive = true,
+                            LabelProfileId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d08"),
+                            NumericAbsoluteTolerance = 0m,
+                            NumericRelativeTolerance = 0m,
+                            OcrConfidenceThreshold = 0.5,
+                            Required = true
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d20"),
+                            ComparisonStrategy = "Identifier",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Critical = true,
+                            DataType = "Text",
+                            DisplayName = "Part Number",
+                            DisplayOrder = 1,
+                            FieldName = "PART_NUMBER",
+                            IsActive = true,
+                            LabelProfileId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d09"),
+                            NumericAbsoluteTolerance = 0m,
+                            NumericRelativeTolerance = 0m,
+                            OcrConfidenceThreshold = 0.5,
+                            Required = true
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d21"),
+                            ComparisonStrategy = "Identifier",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Critical = true,
+                            DataType = "Text",
+                            DisplayName = "Production Order",
+                            DisplayOrder = 2,
+                            FieldName = "PRODUCTION_ORDER",
+                            IsActive = true,
+                            LabelProfileId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d09"),
+                            NumericAbsoluteTolerance = 0m,
+                            NumericRelativeTolerance = 0m,
+                            OcrConfidenceThreshold = 0.5,
+                            Required = true
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d22"),
+                            ComparisonStrategy = "Identifier",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Critical = true,
+                            DataType = "Text",
+                            DisplayName = "Work Order",
+                            DisplayOrder = 3,
+                            FieldName = "WORK_ORDER",
+                            IsActive = true,
+                            LabelProfileId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d09"),
+                            NumericAbsoluteTolerance = 0m,
+                            NumericRelativeTolerance = 0m,
+                            OcrConfidenceThreshold = 0.5,
+                            Required = true
                         });
                 });
 
@@ -557,10 +822,18 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("GeneratedAtUtc")
                         .ValueGeneratedOnAdd()
@@ -582,6 +855,11 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Sha256Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTimeOffset?>("UpdatedAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -645,6 +923,9 @@ namespace Dixon.LabelVerification.API.Data.Migrations
 
                     b.Property<Guid>("ModelId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("ProcessingDurationMs")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("ProductionOrderNumber")
                         .HasMaxLength(100)
@@ -773,8 +1054,8 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                             BrandId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d01"),
                             Code = "HP-15-FD1652TU-CO",
                             CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            EffectiveFromUtc = new DateTimeOffset(new DateTime(2026, 11, 4, 15, 10, 54, 378, DateTimeKind.Unspecified).AddTicks(6034), new TimeSpan(0, 0, 0, 0, 0)),
-                            IsActive = true,
+                            EffectiveFromUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsActive = false,
                             LabelType = "CO",
                             ModelId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d05"),
                             Name = "HP 15-fd1652TU CO",
@@ -786,12 +1067,38 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                             BrandId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d01"),
                             Code = "HP-15-FD1652TU-CONFIG",
                             CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            EffectiveFromUtc = new DateTimeOffset(new DateTime(2026, 11, 4, 15, 10, 54, 378, DateTimeKind.Unspecified).AddTicks(7412), new TimeSpan(0, 0, 0, 0, 0)),
-                            IsActive = true,
+                            EffectiveFromUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsActive = false,
                             LabelType = "CONFIG",
                             ModelId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d05"),
                             Name = "HP 15-fd1652TU Config",
                             Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d08"),
+                            BrandId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d01"),
+                            Code = "HP-15-FD1652TU-CO",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            EffectiveFromUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsActive = true,
+                            LabelType = "CO",
+                            ModelId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d05"),
+                            Name = "HP 15-fd1652TU CO",
+                            Version = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d09"),
+                            BrandId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d01"),
+                            Code = "HP-15-FD1652TU-CONFIG",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            EffectiveFromUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsActive = true,
+                            LabelType = "CONFIG",
+                            ModelId = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d05"),
+                            Name = "HP 15-fd1652TU Config",
+                            Version = 2
                         });
                 });
 
@@ -848,6 +1155,181 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                             IsActive = true,
                             Name = "15-fd1652TU"
                         });
+                });
+
+            modelBuilder.Entity("Dixon.LabelVerification.API.Entities.MasterLabel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BrandId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("Engine")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("EngineVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ImageQualityStatus")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid>("LabelProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LabelType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("ModelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("OcrDataJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OcrStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<double?>("OverallConfidence")
+                        .HasColumnType("float");
+
+                    b.Property<long?>("ProcessingDurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RawExtractedText")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Sha256Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<string>("StoredFileName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("UploadedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid>("UploadedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LabelProfileId");
+
+                    b.HasIndex("UploadedByUserId");
+
+                    b.HasIndex("BrandId", "ModelId");
+
+                    b.HasIndex("ModelId", "LabelType")
+                        .IsUnique();
+
+                    b.ToTable("MasterLabels", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MasterLabels_LabelType", "[LabelType] IN ('CO', 'CONFIG')");
+
+                            t.HasCheckConstraint("CK_MasterLabels_SizeBytes", "[SizeBytes] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Dixon.LabelVerification.API.Entities.MasterLabelField", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BoundingBoxJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("float");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ExtractedValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("FieldKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("MasterLabelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("NormalizedValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MasterLabelId", "FieldKey")
+                        .IsUnique();
+
+                    b.ToTable("MasterLabelFields", (string)null);
                 });
 
             modelBuilder.Entity("Dixon.LabelVerification.API.Entities.OcrResult", b =>
@@ -1005,6 +1487,24 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("SystemSettings", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d21"),
+                            Description = "Minimum OCR confidence required before configured field values can be compared.",
+                            SettingKey = "OcrMinimumConfidence",
+                            SettingValue = "0.85",
+                            UpdatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("73a3f07d-c906-4e49-a3db-4854ab1a9d22"),
+                            Description = "Status values supported by inspection and stage results.",
+                            SettingKey = "InspectionStatuses",
+                            SettingValue = "[\"READY\",\"PROCESSING\",\"PASS\",\"FAIL\",\"REVIEW_REQUIRED\",\"BLOCKED\",\"CANCELLED\",\"ERROR\",\"NOT_APPLICABLE\"]",
+                            UpdatedAtUtc = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        });
                 });
 
             modelBuilder.Entity("Dixon.LabelVerification.API.Entities.User", b =>
@@ -1039,6 +1539,13 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
 
+                    b.Property<DateTimeOffset?>("PasswordResetExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("PasswordResetTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1057,12 +1564,42 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
+                    b.HasIndex("Role");
+
                     b.HasIndex("Username")
                         .IsUnique();
 
                     b.ToTable("ApplicationUsers", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ApplicationUsers_Role", "[Role] IN ('Admin', 'Operator', 'Viewer')");
+                            t.HasCheckConstraint("CK_ApplicationUsers_Role", "[Role] IN ('Supervisor', 'Operator')");
+                        });
+                });
+
+            modelBuilder.Entity("Dixon.LabelVerification.API.Entities.UserRole", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("UserRoles", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Code = "Supervisor",
+                            Name = "Supervisor"
+                        },
+                        new
+                        {
+                            Code = "Operator",
+                            Name = "Operator"
                         });
                 });
 
@@ -1270,6 +1807,45 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.Navigation("Brand");
                 });
 
+            modelBuilder.Entity("Dixon.LabelVerification.API.Entities.MasterLabel", b =>
+                {
+                    b.HasOne("Dixon.LabelVerification.API.Entities.LabelProfile", "LabelProfile")
+                        .WithMany()
+                        .HasForeignKey("LabelProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Dixon.LabelVerification.API.Entities.User", "UploadedByUser")
+                        .WithMany()
+                        .HasForeignKey("UploadedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Dixon.LabelVerification.API.Entities.LaptopModel", "Model")
+                        .WithMany()
+                        .HasForeignKey("BrandId", "ModelId")
+                        .HasPrincipalKey("BrandId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("LabelProfile");
+
+                    b.Navigation("Model");
+
+                    b.Navigation("UploadedByUser");
+                });
+
+            modelBuilder.Entity("Dixon.LabelVerification.API.Entities.MasterLabelField", b =>
+                {
+                    b.HasOne("Dixon.LabelVerification.API.Entities.MasterLabel", "MasterLabel")
+                        .WithMany("Fields")
+                        .HasForeignKey("MasterLabelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MasterLabel");
+                });
+
             modelBuilder.Entity("Dixon.LabelVerification.API.Entities.OcrResult", b =>
                 {
                     b.HasOne("Dixon.LabelVerification.API.Entities.InspectionImage", "InspectionImage")
@@ -1298,6 +1874,17 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("InspectionSession");
+                });
+
+            modelBuilder.Entity("Dixon.LabelVerification.API.Entities.User", b =>
+                {
+                    b.HasOne("Dixon.LabelVerification.API.Entities.UserRole", "UserRole")
+                        .WithMany("Users")
+                        .HasForeignKey("Role")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("UserRole");
                 });
 
             modelBuilder.Entity("Dixon.LabelVerification.API.Entities.Brand", b =>
@@ -1342,6 +1929,11 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.Navigation("LabelProfiles");
                 });
 
+            modelBuilder.Entity("Dixon.LabelVerification.API.Entities.MasterLabel", b =>
+                {
+                    b.Navigation("Fields");
+                });
+
             modelBuilder.Entity("Dixon.LabelVerification.API.Entities.OcrResult", b =>
                 {
                     b.Navigation("ExtractedFields");
@@ -1357,6 +1949,11 @@ namespace Dixon.LabelVerification.API.Data.Migrations
                     b.Navigation("CreatedInspections");
 
                     b.Navigation("InspectionLogs");
+                });
+
+            modelBuilder.Entity("Dixon.LabelVerification.API.Entities.UserRole", b =>
+                {
+                    b.Navigation("Users");
                 });
 #pragma warning restore 612, 618
         }

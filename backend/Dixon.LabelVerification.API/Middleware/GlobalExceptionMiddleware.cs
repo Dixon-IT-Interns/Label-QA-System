@@ -20,6 +20,16 @@ public sealed class GlobalExceptionMiddleware(
                 exception,
                 "Unhandled exception for {Method} {Path} traceId={TraceId}",
                 context.Request.Method, context.Request.Path, context.TraceIdentifier);
+            if (exception is DbUpdateConcurrencyException concurrencyException)
+            {
+                logger.LogError(
+                    "Database concurrency conflict for {Method} {Path} traceId={TraceId} entries={Entries}",
+                    context.Request.Method,
+                    context.Request.Path,
+                    context.TraceIdentifier,
+                    string.Join(",", concurrencyException.Entries.Select(
+                        entry => $"{entry.Metadata.ClrType.Name}:{entry.State}")));
+            }
 
             if (context.Response.HasStarted)
             {
@@ -38,7 +48,7 @@ public sealed class GlobalExceptionMiddleware(
                 InspectionProcessingException =>
                     (StatusCodes.Status502BadGateway, exception.Message),
                 DbUpdateConcurrencyException =>
-                    (StatusCodes.Status409Conflict, "The inspection changed while this request was in progress. Refresh and retry."),
+                    (StatusCodes.Status409Conflict, "The data changed while this request was in progress. Refresh and retry."),
                 UnauthorizedAccessException =>
                     (StatusCodes.Status401Unauthorized, exception.Message),
                 ConfigurationNotFoundException =>
@@ -51,7 +61,7 @@ public sealed class GlobalExceptionMiddleware(
             };
             if (statusCode != StatusCodes.Status500InternalServerError)
             {
-                logger.LogWarning(exception, "Configuration request rejected with status {StatusCode}", statusCode);
+                logger.LogWarning(exception, "Request failed with status {StatusCode}", statusCode);
             }
 
             context.Response.StatusCode = statusCode;
@@ -62,6 +72,15 @@ public sealed class GlobalExceptionMiddleware(
                 Instance = context.Request.Path
             };
             problem.Extensions["traceId"] = context.TraceIdentifier;
+            if (exception is DbUpdateConcurrencyException databaseConflict
+                && context.Request.Path.StartsWithSegments(
+                    "/api/master-labels", StringComparison.OrdinalIgnoreCase))
+            {
+                problem.Extensions["conflictingEntities"] = databaseConflict.Entries
+                    .Select(entry => $"{entry.Metadata.ClrType.Name}:{entry.State}")
+                    .ToArray();
+            }
+
             await context.Response.WriteAsJsonAsync(problem);
         }
     }

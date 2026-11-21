@@ -1,5 +1,7 @@
+using System.Security.Claims;
 using Dixon.LabelVerification.API.Data;
 using Dixon.LabelVerification.API.Entities;
+using Dixon.LabelVerification.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,9 +16,14 @@ public sealed class DashboardController(LabelVerificationDbContext db) : Control
     [HttpGet]
     public async Task<ActionResult<DashboardResponse>> Get(CancellationToken cancellationToken)
     {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdValue, out var userId))
+            return Unauthorized();
+        var isSupervisor = User.IsInRole(ApplicationRoles.Supervisor);
         var now = DateTimeOffset.UtcNow;
         var startOfDay = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
-        var inspections = db.InspectionSessions.AsNoTracking();
+        var inspections = InspectionQueryScope.Apply(
+            db.InspectionSessions.AsNoTracking(), userId, isSupervisor);
         var today = await inspections.CountAsync(x => x.CreatedAtUtc >= startOfDay, cancellationToken);
         var total = await inspections.CountAsync(cancellationToken);
         var passed = await inspections.CountAsync(x => x.Status == InspectionStatus.PASS, cancellationToken);

@@ -1,0 +1,55 @@
+{
+  "status": "completed",
+  "overallResult": "REVIEW",
+  "inspectionId": "dbc9871c-4308-4a15-901e-041be43c4f8a",
+  "fields": [
+    {
+      "field": "SERIAL_NUMBER",
+      "master": null,
+      "actual": null,
+      "masterNormalized": null,
+      "actualNormalized": null,
+      "result": "REVIEW"
+    },
+    {
+      "field": "PART_NUMBER",
+      "master": null,
+      "actual": null,
+      "masterNormalized": null,
+      "actualNormalized": null,
+      "result": "REVIEW"
+    },
+    {
+      "field": "MODEL_NO",
+      "master": null,
+      "actual": null,
+      "masterNormalized": null,
+      "actualNormalized": null,
+      "result": "REVIEW"
+    },
+    {
+      "field": "QR_CODE",
+      "master": null,
+      "actual": null,
+      "masterNormalized": null,
+      "actualNormalized": null,
+      "result": "REVIEW"
+    },
+    {
+      "field": "MODEL_NO",
+      "master": null,
+      "actual": null,
+      "masterNormalized": null,
+      "actualNormalized": null,
+      "result": "REVIEW"
+    },
+    {
+      "field": "QUEUE_NO",
+      "master": null,
+      "actual": null,
+      "masterNormalized": null,
+      "actualNormalized": null,
+      "result": "REVIEW"
+    }
+  ]
+}

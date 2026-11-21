@@ -10,7 +10,7 @@ namespace Dixon.LabelVerification.API.Controllers;
 
 [ApiController]
 [Route("api/settings")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = ApplicationRoles.Supervisor)]
 public sealed class SettingsController(LabelVerificationDbContext db) : ControllerBase
 {
     [HttpGet]

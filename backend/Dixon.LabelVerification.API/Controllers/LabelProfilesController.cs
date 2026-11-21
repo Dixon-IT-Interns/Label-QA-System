@@ -28,7 +28,7 @@ public sealed class LabelProfilesController(
         Ok(await profileService.GetByIdAsync(id, cancellationToken));
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(LabelProfileResponse), StatusCodes.Status201Created)]
     public async Task<ActionResult<LabelProfileResponse>> Create(
         LabelProfileRequest request,
@@ -39,7 +39,7 @@ public sealed class LabelProfilesController(
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(LabelProfileResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<LabelProfileResponse>> Update(
         Guid id,
@@ -48,7 +48,7 @@ public sealed class LabelProfilesController(
         Ok(await profileService.UpdateAsync(id, request, cancellationToken));
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
@@ -73,7 +73,7 @@ public sealed class LabelProfilesController(
         Ok(await fieldService.FindByOcrNameAsync(labelProfileId, label, cancellationToken));
 
     [HttpPost("{labelProfileId:guid}/fields")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(FieldDefinitionResponse), StatusCodes.Status201Created)]
     public async Task<ActionResult<FieldDefinitionResponse>> CreateField(
         Guid labelProfileId,
@@ -99,7 +99,7 @@ public sealed class LabelProfilesController(
         Ok(await fieldService.GetByIdAsync(id, cancellationToken));
 
     [HttpPut("/api/field-definitions/{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(FieldDefinitionResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<FieldDefinitionResponse>> UpdateField(
         Guid id,
@@ -108,7 +108,7 @@ public sealed class LabelProfilesController(
         Ok(await fieldService.UpdateAsync(id, request, cancellationToken));
 
     [HttpDelete("/api/field-definitions/{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> DeleteField(Guid id, CancellationToken cancellationToken)
     {

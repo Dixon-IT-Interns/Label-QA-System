@@ -20,7 +20,7 @@ public sealed class InspectionManagementService(
     IConfiguration configuration,
     ILogger<InspectionManagementService> logger) : IInspectionManagementService
 {
-    private readonly string _storageRoot = ResolveStorageRoot(configuration, environment);
+    private readonly string _storageRoot = InspectionStoragePaths.ResolveRoot(configuration, environment);
 
     public async Task<InspectionDetailsResponse> CreateAsync(
         CreateInspectionRequest request,
@@ -45,12 +45,26 @@ public sealed class InspectionManagementService(
         }
 
         var profiles = await db.LabelProfiles
+            .Include(x => x.FieldDefinitions).ThenInclude(x => x.Aliases)
             .Where(x => x.ModelId == model.Id && x.IsActive)
             .ToListAsync(cancellationToken);
         var coProfile = profiles.SingleOrDefault(x => x.LabelType == LabelType.CO)
             ?? throw new InspectionConflictException("No active CO label profile is configured for this model.");
         var configProfile = profiles.SingleOrDefault(x => x.LabelType == LabelType.CONFIG)
             ?? throw new InspectionConflictException("No active CONFIG label profile is configured for this model.");
+        var coFields = CoComparisonFieldSelector.Select(coProfile.FieldDefinitions);
+        var configFields = ConfigComparisonFieldSelector.Select(configProfile.FieldDefinitions);
+        var masters = await db.MasterLabels.AsNoTracking().Include(x => x.Fields)
+            .Where(x => x.ModelId == model.Id)
+            .ToListAsync(cancellationToken);
+        var coMaster = masters.SingleOrDefault(x => x.LabelType == LabelType.CO)
+            ?? throw new InspectionConflictException(
+                "Master COO label is not configured for this model. Ask a Supervisor to configure it in Master Labels.");
+        var configMaster = masters.SingleOrDefault(x => x.LabelType == LabelType.CONFIG)
+            ?? throw new InspectionConflictException(
+                "Master Config label is not configured for this model. Ask a Supervisor to configure it in Master Labels.");
+        EnsureMasterProfile(coMaster, coProfile, coFields);
+        EnsureMasterProfile(configMaster, configProfile, configFields);
 
         var now = DateTimeOffset.UtcNow;
         var inspection = new InspectionSession
@@ -69,10 +83,26 @@ public sealed class InspectionManagementService(
             SerialStatus = InspectionStatus.NOT_APPLICABLE,
             StartedAtUtc = now
         };
-        db.InspectionSessions.Add(inspection);
-        AddLog(inspection, operatorUserId, "CREATED", "Inspection created with pinned CO and CONFIG profile versions.", null, null, ipAddress);
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        var copiedPaths = new List<string>();
+        try
+        {
+            inspection.Images.Add(await CopyMasterToInspectionAsync(
+                inspection, coMaster, coFields, operatorUserId, copiedPaths, cancellationToken));
+            inspection.Images.Add(await CopyMasterToInspectionAsync(
+                inspection, configMaster, configFields, operatorUserId, copiedPaths, cancellationToken));
+            db.InspectionSessions.Add(inspection);
+            AddLog(inspection, operatorUserId, "CREATED",
+                "Inspection created with pinned CO and CONFIG profiles and saved model master labels.",
+                null, null, ipAddress);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            foreach (var path in copiedPaths)
+                DeleteFile(path);
+            throw;
+        }
         logger.LogInformation("Inspection {InspectionNumber} created for model {ModelId}",
             inspection.InspectionNumber, model.Id);
         return await GetByIdAsync(inspection.Id, cancellationToken);
@@ -80,9 +110,12 @@ public sealed class InspectionManagementService(
 
     public async Task<PagedInspectionResponse> GetAllAsync(
         InspectionListQuery query,
+        Guid userId,
+        bool isSupervisor,
         CancellationToken cancellationToken)
     {
-        var inspections = db.InspectionSessions.AsNoTracking()
+        var inspections = InspectionQueryScope.Apply(
+                db.InspectionSessions.AsNoTracking(), userId, isSupervisor)
             .Include(x => x.Brand).Include(x => x.Model).AsQueryable();
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -172,8 +205,9 @@ public sealed class InspectionManagementService(
                 requestId, inspectionId, imageType);
             throw new InspectionNotFoundException($"Inspection '{inspectionId}' was not found.");
         }
-        if (!InspectionImageRequirements.RequiredTypes.Contains(imageType))
-            throw new InspectionValidationException("The image type must be one of the four supported label types.");
+        if (!InspectionImageRequirements.OperatorUploadTypes.Contains(imageType))
+            throw new InspectionValidationException(
+                "Only Actual COO and Actual Config images can be uploaded. Master labels are managed by a Supervisor.");
         if (file.Length is <= 0 or > ImageFileInspector.MaximumFileSizeBytes)
             throw new InspectionValidationException("Images must be non-empty and 20 MB or smaller.");
 
@@ -458,6 +492,9 @@ public sealed class InspectionManagementService(
         var image = await db.InspectionImages.Include(x => x.InspectionSession)
             .SingleOrDefaultAsync(x => x.Id == imageId && x.InspectionSessionId == inspectionId, cancellationToken)
             ?? throw new InspectionNotFoundException("The image was not found for this inspection.");
+        if (image.Role == ImageRole.MASTER)
+            throw new InspectionConflictException(
+                "Saved master label images cannot be removed from an inspection.");
         var inspection = image.InspectionSession;
         if (inspection.Status is not (InspectionStatus.READY or InspectionStatus.ERROR))
             throw new InspectionConflictException("Images cannot be deleted after processing starts.");
@@ -544,6 +581,7 @@ public sealed class InspectionManagementService(
             "PROCESS_START inspectionId={InspectionId} timeUtc={TimeUtc}",
             inspectionId, DateTimeOffset.UtcNow);
         var inspection = await db.InspectionSessions.AsNoTracking().Include(x => x.Images)
+            .ThenInclude(x => x.OcrResults).ThenInclude(x => x.ExtractedFields)
             .SingleOrDefaultAsync(x => x.Id == inspectionId, cancellationToken)
             ?? throw new InspectionNotFoundException($"Inspection '{inspectionId}' was not found.");
         logger.LogInformation(
@@ -600,6 +638,7 @@ public sealed class InspectionManagementService(
             .SingleAsync(cancellationToken);
         inspection.RowVersion = processingRowVersion;
         inspection.Images = await db.InspectionImages.AsNoTracking()
+            .Include(x => x.OcrResults).ThenInclude(x => x.ExtractedFields)
             .Where(x => x.InspectionSessionId == inspectionId)
             .OrderBy(x => x.ImageType)
             .ToListAsync(cancellationToken);
@@ -659,7 +698,9 @@ public sealed class InspectionManagementService(
             var coFields = CoComparisonFieldSelector.Select(coProfile.FieldDefinitions);
             var configFields = ConfigComparisonFieldSelector.Select(configProfile.FieldDefinitions);
 
-            foreach (var image in inspection.Images.OrderBy(x => x.ImageType))
+            foreach (var image in inspection.Images
+                         .Where(x => x.ImageType is InspectionImageType.ACTUAL_CO or InspectionImageType.ACTUAL_CONFIG)
+                         .OrderBy(x => x.ImageType))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 logger.LogInformation(
@@ -672,7 +713,7 @@ public sealed class InspectionManagementService(
                 var imageContent = new ByteArrayContent(bytes);
                 imageContent.Headers.ContentType = new MediaTypeHeaderValue(image.ContentType);
                 content.Add(imageContent, "file", image.OriginalFileName);
-                var fieldDefinitions = image.ImageType is InspectionImageType.MASTER_CO or InspectionImageType.ACTUAL_CO
+                var fieldDefinitions = image.ImageType == InspectionImageType.ACTUAL_CO
                     ? coFields
                     : configFields;
                 var fieldConfig = fieldDefinitions.Select(x => new
@@ -759,7 +800,7 @@ public sealed class InspectionManagementService(
                             .Distinct(StringComparer.OrdinalIgnoreCase).Count() != configuredCoKeys.Count)
                     {
                         throw new InspectionProcessingException(
-                            "CO OCR must return one candidate for each configured S/N, P/N, Model No., and QR Code field.");
+                            "CO OCR must return one candidate for each configured Model No., QR Code, and P/N field.");
                     }
 
                     result = result with
@@ -819,15 +860,13 @@ public sealed class InspectionManagementService(
                 ocrByImageType.Add(image.ImageType, (ocrResult, result));
             }
 
-            var coMaster = ExtractConfiguredFields(
-                coFields, ocrByImageType[InspectionImageType.MASTER_CO].Result,
-                ocrByImageType[InspectionImageType.MASTER_CO].Response);
+            var coMaster = BuildFieldExtractions(
+                inspection.Images.Single(x => x.ImageType == InspectionImageType.MASTER_CO), coFields);
             var coActual = ExtractConfiguredFields(
                 coFields, ocrByImageType[InspectionImageType.ACTUAL_CO].Result,
                 ocrByImageType[InspectionImageType.ACTUAL_CO].Response);
-            var configMaster = ExtractConfiguredFields(
-                configFields, ocrByImageType[InspectionImageType.MASTER_CONFIG].Result,
-                ocrByImageType[InspectionImageType.MASTER_CONFIG].Response);
+            var configMaster = BuildFieldExtractions(
+                inspection.Images.Single(x => x.ImageType == InspectionImageType.MASTER_CONFIG), configFields);
             var configActual = ExtractConfiguredFields(
                 configFields, ocrByImageType[InspectionImageType.ACTUAL_CONFIG].Result,
                 ocrByImageType[InspectionImageType.ACTUAL_CONFIG].Response);
@@ -1146,6 +1185,124 @@ public sealed class InspectionManagementService(
         return extracted;
     }
 
+    private void EnsureMasterProfile(
+        MasterLabel master,
+        LabelProfile profile,
+        IReadOnlyList<FieldDefinition> definitions)
+    {
+        if (master.LabelProfileId != profile.Id)
+            throw new InspectionConflictException(
+                $"The saved Master {master.LabelType} label uses an older profile. Ask a Supervisor to replace it.");
+
+        var savedKeys = master.Fields.Select(field => field.FieldKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (savedKeys.Count != definitions.Count
+            || definitions.Any(definition => !savedKeys.Contains(definition.FieldName)))
+            throw new InspectionConflictException(
+                $"The saved Master {master.LabelType} fields do not match the active profile. Ask a Supervisor to replace it.");
+
+        if (!File.Exists(GetStoragePath(master.StoragePath)))
+            throw new InspectionConflictException(
+                $"The saved Master {master.LabelType} image is unavailable. Ask a Supervisor to replace it.");
+    }
+
+    private async Task<InspectionImage> CopyMasterToInspectionAsync(
+        InspectionSession inspection,
+        MasterLabel master,
+        IReadOnlyList<FieldDefinition> definitions,
+        Guid userId,
+        ICollection<string> copiedPaths,
+        CancellationToken cancellationToken)
+    {
+        var sourcePath = GetStoragePath(master.StoragePath);
+        var extension = Path.GetExtension(master.StoredFileName);
+        var storedFileName = $"{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine(inspection.Id.ToString("N"), storedFileName);
+        var targetPath = GetStoragePath(relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        copiedPaths.Add(targetPath);
+        await using (var source = new FileStream(
+                         sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true))
+        await using (var target = new FileStream(
+                         targetPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
+        {
+            await source.CopyToAsync(target, cancellationToken);
+            await target.FlushAsync(cancellationToken);
+        }
+
+        var imageType = master.LabelType == LabelType.CO
+            ? InspectionImageType.MASTER_CO
+            : InspectionImageType.MASTER_CONFIG;
+        var uploadedAtUtc = DateTimeOffset.UtcNow;
+        var image = new InspectionImage
+        {
+            InspectionSessionId = inspection.Id,
+            ImageType = imageType,
+            LabelType = master.LabelType,
+            Role = ImageRole.MASTER,
+            OriginalFileName = master.OriginalFileName,
+            StoredFileName = storedFileName,
+            StoragePath = relativePath,
+            Sha256Hash = master.Sha256Hash,
+            ContentType = master.ContentType,
+            SizeBytes = master.SizeBytes,
+            Width = master.Width,
+            Height = master.Height,
+            UploadedByUserId = userId,
+            UploadedAtUtc = uploadedAtUtc,
+            ImageQualityStatus = master.ImageQualityStatus
+        };
+        var savedFields = master.Fields.ToDictionary(
+            field => field.FieldKey, StringComparer.OrdinalIgnoreCase);
+        var ocrResult = new OcrResult
+        {
+            InspectionImageId = image.Id,
+            InspectionSessionId = inspection.Id,
+            Engine = master.Engine,
+            EngineVersion = master.EngineVersion,
+            Status = master.OcrStatus,
+            RawExtractedText = master.RawExtractedText,
+            ExtractedFieldsJson = master.OcrDataJson,
+            OverallConfidence = master.OverallConfidence,
+            ProcessingDurationMs = master.ProcessingDurationMs,
+            CreatedAtUtc = uploadedAtUtc
+        };
+        foreach (var definition in definitions)
+        {
+            var field = savedFields[definition.FieldName];
+            ocrResult.ExtractedFields.Add(new ExtractedField
+            {
+                OcrResultId = ocrResult.Id,
+                FieldDefinitionId = definition.Id,
+                FieldKey = field.FieldKey,
+                ExtractedValue = field.ExtractedValue,
+                NormalizedValue = field.NormalizedValue,
+                Confidence = field.Confidence,
+                BoundingBoxJson = field.BoundingBoxJson,
+                CreatedAtUtc = uploadedAtUtc
+            });
+        }
+        image.OcrResults.Add(ocrResult);
+        return image;
+    }
+
+    private void DeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (IOException exception)
+        {
+            logger.LogError(exception, "Could not remove a failed inspection master image copy");
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            logger.LogError(exception, "Could not remove a failed inspection master image copy");
+        }
+    }
+
     private static Dictionary<Guid, ConfiguredFieldExtraction> BuildFieldExtractions(
         InspectionImage image,
         IReadOnlyList<FieldDefinition> definitions)
@@ -1266,16 +1423,8 @@ public sealed class InspectionManagementService(
             throw new InspectionConflictException($"Required images are missing: {string.Join(", ", missing)}.");
     }
 
-    private string GetStoragePath(string relativePath)
-    {
-        var fullPath = Path.GetFullPath(Path.Combine(_storageRoot, relativePath));
-        var rootPrefix = _storageRoot.EndsWith(Path.DirectorySeparatorChar)
-            ? _storageRoot
-            : _storageRoot + Path.DirectorySeparatorChar;
-        if (!fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
-            throw new InspectionValidationException("The stored image path is invalid.");
-        return fullPath;
-    }
+    private string GetStoragePath(string relativePath) =>
+        InspectionStoragePaths.ResolvePath(_storageRoot, relativePath);
 
     private static string SanitizeOriginalName(string fileName)
     {
@@ -1286,17 +1435,6 @@ public sealed class InspectionManagementService(
     }
 
     private static string? TrimOrNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    private static string ResolveStorageRoot(IConfiguration configuration, IWebHostEnvironment environment)
-    {
-        var configuredPath = configuration["Storage:InspectionDirectory"];
-        var path = string.IsNullOrWhiteSpace(configuredPath)
-            ? Path.Combine(environment.ContentRootPath, "..", "..", "storage", "inspections")
-            : Path.IsPathRooted(configuredPath)
-                ? configuredPath
-                : Path.Combine(environment.ContentRootPath, configuredPath);
-        return Path.GetFullPath(path);
-    }
 
     private static (LabelType LabelType, ImageRole Role) GetLabelParts(InspectionImageType type) => type switch
     {

@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Authentication;
 using MailKit;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -59,7 +58,12 @@ public sealed class PasswordResetEmailSender(IConfiguration configuration)
             await client.DisconnectAsync(true, cancellationToken);
         }
         catch (Exception exception) when (
-            exception is MailKitException or SocketException or IOException or AuthenticationException)
+            exception is CommandException
+                or ProtocolException
+                or SocketException
+                or IOException
+                or System.Security.Authentication.AuthenticationException
+                or MailKit.Security.AuthenticationException)
         {
             throw new EmailDeliveryException("The password reset email could not be delivered.", exception);
         }

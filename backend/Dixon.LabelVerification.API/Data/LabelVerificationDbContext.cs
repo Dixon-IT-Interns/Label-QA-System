@@ -11,6 +11,8 @@ public sealed class LabelVerificationDbContext(DbContextOptions<LabelVerificatio
     public DbSet<LabelProfile> LabelProfiles => Set<LabelProfile>();
     public DbSet<FieldDefinition> FieldDefinitions => Set<FieldDefinition>();
     public DbSet<FieldAlias> FieldAliases => Set<FieldAlias>();
+    public DbSet<MasterLabel> MasterLabels => Set<MasterLabel>();
+    public DbSet<MasterLabelField> MasterLabelFields => Set<MasterLabelField>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<InspectionSession> InspectionSessions => Set<InspectionSession>();

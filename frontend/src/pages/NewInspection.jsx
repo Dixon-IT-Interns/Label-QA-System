@@ -12,13 +12,13 @@ import {
   validateInspection,
 } from '../services/inspectionApi.js'
 import { getBrands, getLabelProfiles, getModels } from '../services/configurationApi.js'
+import { getMasterLabelAvailability } from '../services/masterLabelApi.js'
 
 const imageSlots = [
-  { type: 'MASTER_CO', title: 'Master CO', description: 'Reference CO label' },
   { type: 'ACTUAL_CO', title: 'Actual CO', description: 'Unit CO label' },
-  { type: 'MASTER_CONFIG', title: 'Master Config', description: 'Reference configuration label' },
   { type: 'ACTUAL_CONFIG', title: 'Actual Config', description: 'Unit configuration label' },
 ]
+const requiredImageTypes = ['MASTER_CO', 'ACTUAL_CO', 'MASTER_CONFIG', 'ACTUAL_CONFIG']
 const maximumBytes = 20 * 1024 * 1024
 
 function NewInspection() {
@@ -26,6 +26,7 @@ function NewInspection() {
   const [brands, setBrands] = useState([])
   const [models, setModels] = useState([])
   const [profiles, setProfiles] = useState([])
+  const [masterAvailabilityState, setMasterAvailabilityState] = useState({ modelId: '', data: null })
   const [form, setForm] = useState({ brandId: '', modelId: '' })
   const [files, setFiles] = useState({})
   const [stage, setStage] = useState(1)
@@ -69,6 +70,20 @@ function NewInspection() {
     return () => { active = false }
   }, [])
 
+  useEffect(() => {
+    if (!form.modelId) return undefined
+    const modelId = form.modelId
+    const controller = new AbortController()
+    getMasterLabelAvailability(modelId, controller.signal)
+      .then((data) => setMasterAvailabilityState({ modelId, data }))
+      .catch((requestError) => {
+        if (controller.signal.aborted) return
+        setMasterAvailabilityState({ modelId, data: null })
+        setError(getInspectionErrorMessage(requestError))
+      })
+    return () => controller.abort()
+  }, [form.modelId])
+
   useEffect(() => () => {
     fileUrls.current.forEach((url) => URL.revokeObjectURL(url))
     fileUrls.current.clear()
@@ -84,18 +99,26 @@ function NewInspection() {
     () => profiles.filter((profile) => profile.modelId === form.modelId && profile.isActive),
     [profiles, form.modelId],
   )
+  const masterAvailability = masterAvailabilityState.modelId === form.modelId
+    ? masterAvailabilityState.data
+    : null
+  const masterAvailabilityLoading = Boolean(
+    form.modelId && masterAvailabilityState.modelId !== form.modelId,
+  )
   const hasCoProfile = activeProfiles.some((profile) => profile.labelType === 'CO')
   const hasConfigProfile = activeProfiles.some((profile) => profile.labelType === 'CONFIG')
   const missingImageTypes = imageSlots.filter(({ type }) =>
     !files[type] && !uploadedImages.some((image) => image.imageType === type))
   const readyImageCount = imageSlots.length - missingImageTypes.length
   const allImagesReady = readyImageCount === imageSlots.length
+  const allInspectionImagesUploaded = requiredImageTypes.every((type) =>
+    uploadedImages.some((image) => image.imageType === type))
   const canStart = Boolean(inspection)
     && ['READY', 'ERROR'].includes(inspection.inspection.status)
-    && imageSlots.every(({ type }) => uploadedImages.some((image) => image.imageType === type))
+    && allInspectionImagesUploaded
     && Object.keys(files).length === 0
     && !busy
-  const allImagesUploaded = imageSlots.every(({ type }) => uploadedImages.some((image) => image.imageType === type))
+  const allImagesUploaded = allInspectionImagesUploaded
 
   async function chooseFile(type, file) {
     setError('')
@@ -184,8 +207,14 @@ function NewInspection() {
       setError('The selected model needs active CO and CONFIG profiles before an inspection can be created.')
       return
     }
+    if (masterAvailabilityLoading || !masterAvailability?.hasCoMaster || !masterAvailability?.hasConfigMaster) {
+      setDetailsOpen(true)
+      setError(masterAvailability?.message
+        || 'Both Master COO and Master Config labels must be configured by a Supervisor before an inspection can be created.')
+      return
+    }
     if (!allImagesReady) {
-      setError('Upload or capture all four required images before continuing.')
+      setError('Upload or capture both actual label images before continuing.')
       return
     }
     saveInProgress.current = true
@@ -250,8 +279,9 @@ function NewInspection() {
           ? { ...current, inspection: { ...current.inspection, status: 'READY' } }
           : current)
       }
-      setNotice(`Inspection ${saved.inspection.inspectionNumber} saved with ${images.length} of 4 images.`)
-      if (images.length === imageSlots.length) setStage(2)
+      const actualCount = imageSlots.filter(({ type }) => images.some((image) => image.imageType === type)).length
+      setNotice(`Inspection ${saved.inspection.inspectionNumber} saved with ${actualCount} of 2 actual images and the saved master labels.`)
+      if (imageSlots.every(({ type }) => images.some((image) => image.imageType === type))) setStage(2)
     } catch (requestError) {
       setError(getInspectionErrorMessage(requestError))
     } finally {
@@ -266,17 +296,16 @@ function NewInspection() {
     setBusy(true)
     setStage(3)
     setError('')
-    setNotice('Checking the four uploaded images, then running OpenCV, Tesseract, and field comparison…')
+    setNotice('Checking the saved master labels and two actual images, then running OCR and field comparison…')
     try {
       const inspectionId = inspection.inspection.id
       const serverImages = await getInspectionImages(inspectionId)
       setUploadedImages(serverImages)
-      const missing = imageSlots
-        .filter(({ type }) => !serverImages.some((image) => image.imageType === type))
-        .map(({ title }) => title)
+      const missing = requiredImageTypes
+        .filter((type) => !serverImages.some((image) => image.imageType === type))
       if (missing.length > 0) {
         setStage(2)
-        setError(`Upload all four images before processing. Missing: ${missing.join(', ')}.`)
+        setError(`Required saved master labels and actual images are missing: ${missing.join(', ')}.`)
         setNotice('')
         return
       }
@@ -305,8 +334,8 @@ function NewInspection() {
     <section className="new-inspection-page">
       <header className="new-inspection-heading">
         <Link aria-label="Back to dashboard" className="new-inspection-back" to="/dashboard"><ArrowLeft size={17} /></Link>
-        <div><h1>New Inspection</h1><p>Upload or capture the four required label images</p></div>
-        <button aria-label="Inspection help" className="icon-button" title="Upload all four images: CO and configuration labels for both Master and Actual." type="button"><CircleHelp size={17} /></button>
+        <div><h1>New Inspection</h1><p>Upload or capture the actual COO and Config labels</p></div>
+        <button aria-label="Inspection help" className="icon-button" title="Saved Master COO and Config labels are attached automatically. Upload the two actual labels." type="button"><CircleHelp size={17} /></button>
       </header>
       {error && <div className="configuration-alert" role="alert">{error}</div>}
       {notice && <div className={`inspection-notice${busy ? ' is-working' : ''}`} role="status">{notice}{inspection && <> · <Link to={`/inspections/${inspection.inspection.id}`}>Open details</Link></>}</div>}
@@ -318,7 +347,7 @@ function NewInspection() {
       </ol>
 
       {stage === 1 ? <form className="inspection-upload-flow" onSubmit={(event) => { event.preventDefault(); void saveInspection() }}>
-        <div className="inspection-upload-prompt"><AlertCircle size={16} /><span>Upload or capture all 4 images <small>(CO &amp; Config)</small></span><strong>{readyImageCount}/4</strong></div>
+        <div className="inspection-upload-prompt"><AlertCircle size={16} /><span>Upload or capture both actual labels <small>(COO &amp; Config)</small></span><strong>{readyImageCount}/2</strong></div>
         <section className="inspection-details-accordion">
           <button aria-expanded={detailsOpen} className="inspection-details-toggle" onClick={() => setDetailsOpen((open) => !open)} type="button">
             <span><strong>Inspection details</strong><small>{form.modelId ? filteredModels.find((model) => model.id === form.modelId)?.name : 'Select brand and model to continue'}</small></span>
@@ -326,13 +355,19 @@ function NewInspection() {
           </button>
           {detailsOpen && <div className="inspection-details-fields">
             <label className="form-field"><span>Brand</span>
-              <select disabled={loading || Boolean(inspection)} onChange={(event) => setForm({ ...form, brandId: event.target.value, modelId: '' })} value={form.brandId}>
+              <select disabled={loading || Boolean(inspection)} onChange={(event) => {
+                setForm({ ...form, brandId: event.target.value, modelId: '' })
+                setMasterAvailabilityState({ modelId: '', data: null })
+              }} value={form.brandId}>
                 <option value="">Select a brand</option>
                 {brands.filter((brand) => brand.isActive).map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
               </select>
             </label>
             <label className="form-field"><span>Laptop model</span>
-              <select disabled={!form.brandId || Boolean(inspection)} onChange={(event) => setForm({ ...form, modelId: event.target.value })} value={form.modelId}>
+              <select disabled={!form.brandId || Boolean(inspection)} onChange={(event) => {
+                setForm({ ...form, modelId: event.target.value })
+                setMasterAvailabilityState({ modelId: '', data: null })
+              }} value={form.modelId}>
                 <option value="">Select a model</option>
                 {filteredModels.map((model) => <option key={model.id} value={model.id}>{model.name} ({model.code})</option>)}
               </select>
@@ -340,6 +375,9 @@ function NewInspection() {
           </div>}
         </section>
         {form.modelId && (!hasCoProfile || !hasConfigProfile) && <div className="configuration-alert" role="alert">This model needs one active CO and one active CONFIG profile before an inspection can be created.</div>}
+        {form.modelId && masterAvailabilityLoading && <div className="inspection-notice" role="status">Checking saved master labels…</div>}
+        {form.modelId && !masterAvailabilityLoading && masterAvailability?.message
+          && <div className="configuration-alert" role="alert">{masterAvailability.message}</div>}
         <div className="inspection-upload-grid">
           {imageSlots.map(({ type, title, description }) => {
             const selected = files[type]
@@ -384,7 +422,7 @@ function NewInspection() {
         {!loading && brands.length === 0 && <div className="configuration-alert" role="alert">No brands are configured. Add a brand, model, and active CO/CONFIG profiles first.</div>}
         <footer className="inspection-continue-footer">
           {inspection && <span>Inspection <strong>{inspection.inspection.inspectionNumber}</strong></span>}
-          <button className="button button-primary" disabled={busy || loading || !allImagesReady} type="submit">
+          <button className="button button-primary" disabled={busy || loading || masterAvailabilityLoading || !masterAvailability?.hasCoMaster || !masterAvailability?.hasConfigMaster || !allImagesReady} type="submit">
             {busy ? <LoaderCircle className="spin" size={15} /> : null} {busy ? 'Saving images…' : 'Continue'}
           </button>
         </footer>
@@ -398,7 +436,7 @@ function NewInspection() {
           <li><span />Preparing inspection result</li>
         </ol>
       </section> : <section className="inspection-review panel">
-        <header><div><h2>Review images</h2><p>Make sure the correct label is shown in each image before processing.</p></div><span className="inspection-review-ready"><Check size={14} /> 4 images ready</span></header>
+        <header><div><h2>Review images</h2><p>Saved master labels are attached automatically. Confirm both actual labels before processing.</p></div><span className="inspection-review-ready"><Check size={14} /> 2 actual images ready</span></header>
         <div className="inspection-review-grid">
           {imageSlots.map(({ type, title }) => {
             const uploaded = uploadedImages.find((image) => image.imageType === type)

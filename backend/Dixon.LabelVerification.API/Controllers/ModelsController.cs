@@ -1,4 +1,5 @@
 using Dixon.LabelVerification.API.DTOs.Configuration;
+using Dixon.LabelVerification.API.Entities;
 using Dixon.LabelVerification.API.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -23,7 +24,7 @@ public sealed class ModelsController(IModelConfigurationService modelService) : 
         Ok(await modelService.GetByIdAsync(id, cancellationToken));
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(ModelResponse), StatusCodes.Status201Created)]
     public async Task<ActionResult<ModelResponse>> Create(
         ModelRequest request,
@@ -34,7 +35,7 @@ public sealed class ModelsController(IModelConfigurationService modelService) : 
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(typeof(ModelResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<ModelResponse>> Update(
         Guid id,
@@ -43,7 +44,7 @@ public sealed class ModelsController(IModelConfigurationService modelService) : 
         Ok(await modelService.UpdateAsync(id, request, cancellationToken));
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = ApplicationRoles.Supervisor)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {

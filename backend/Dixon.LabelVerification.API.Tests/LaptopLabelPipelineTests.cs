@@ -217,14 +217,14 @@ public sealed class LaptopLabelPipelineTests
     }
 
     [Fact]
-    public void CoSelectorReturnsOnlyTheFourRequiredLabelFields()
+    public void CoSelectorReturnsOnlyModelQrAndPartNumberFields()
     {
         var fields = new[]
         {
             CreateField("SERIAL_NUMBER", "S/N"),
-            CreateField("PART_NUMBER", "P/N"),
             CreateField("MODEL_NO", "Model No."),
             CreateField("QR_CODE", "QR Code"),
+            CreateField("PART_NUMBER", "P/N"),
             CreateField("PROCESSOR", "Processor"),
             CreateField("WORK_ORDER", "Work Order")
         };
@@ -232,16 +232,15 @@ public sealed class LaptopLabelPipelineTests
         var selected = CoComparisonFieldSelector.Select(fields);
 
         Assert.Equal(
-            ["SERIAL_NUMBER", "PART_NUMBER", "MODEL_NO", "QR_CODE"],
+            ["MODEL_NO", "QR_CODE", "PART_NUMBER"],
             selected.Select(field => field.FieldName));
     }
 
     [Fact]
-    public void CoSelectorRequiresAllFourFieldsAndIdentifierComparisonPreservesExactEvidence()
+    public void CoSelectorRequiresAllThreeFieldsAndIdentifierComparisonPreservesExactEvidence()
     {
         var exception = Assert.Throws<InspectionProcessingException>(() =>
             CoComparisonFieldSelector.Select([
-                CreateField("SERIAL_NUMBER", "S/N"),
                 CreateField("PART_NUMBER", "P/N"),
                 CreateField("MODEL_NO", "Model No.")
             ]));
@@ -258,14 +257,53 @@ public sealed class LaptopLabelPipelineTests
     }
 
     [Fact]
+    public void DefaultLabelProfilesUseTheSameCOAndConfigFieldKeys()
+    {
+        var model = new LaptopModel
+        {
+            BrandId = Guid.NewGuid(),
+            Code = "MODEL-1",
+            Name = "Model One"
+        };
+
+        var coProfile = DefaultLabelProfileProvisioner.CreateDefaultProfile(model, LabelType.CO, 1);
+        var configProfile = DefaultLabelProfileProvisioner.CreateDefaultProfile(model, LabelType.CONFIG, 1);
+
+        Assert.Equal(
+            ["MODEL_NO", "QR_CODE", "PART_NUMBER"],
+            coProfile.FieldDefinitions.Select(field => field.FieldName));
+        Assert.Equal(
+            ["MODEL_NO", "QUEUE_NO"],
+            configProfile.FieldDefinitions.Select(field => field.FieldName));
+        Assert.DoesNotContain(
+            coProfile.FieldDefinitions,
+            field => field.FieldName == "SERIAL_NUMBER");
+    }
+
+    [Theory]
+    [InlineData("HP Laptop 15-fd1652TU", "15-FD1652TU")]
+    [InlineData("Latitude 5540", "5540")]
+    public void ModelCodeExtractorFindsModelCodeInOcrField(string value, string expected)
+    {
+        Assert.Equal(expected, ModelCodeExtractor.Extract(value));
+    }
+
+    [Theory]
+    [InlineData("Model Number")]
+    [InlineData("15-fd1652TU 15-fd1654TU")]
+    public void ModelCodeExtractorDoesNotGuessWhenNoUniqueModelCodeExists(string value)
+    {
+        Assert.Null(ModelCodeExtractor.Extract(value));
+    }
+
+    [Fact]
     public void CrossLabelValidationComparesOnlyModelAndPartNumberToQueueNumber()
     {
         var coFields = new[]
         {
-            CreateField("SERIAL_NUMBER", "S/N"),
-            CreateField("PART_NUMBER", "P/N"),
             CreateField("MODEL_NO", "Model No."),
-            CreateField("QR_CODE", "QR Code")
+            CreateField("QR_CODE", "QR Code"),
+            CreateField("PART_NUMBER", "P/N")
         };
         var configFields = new[]
         {
@@ -276,8 +314,8 @@ public sealed class LaptopLabelPipelineTests
         configFields[1].ComparisonStrategy = FieldComparisonStrategy.CaseInsensitive;
         var coActual = new Dictionary<Guid, ConfiguredFieldExtraction>
         {
-            [coFields[2].Id] = Extraction("HP Laptop 15-fd1652TU"),
-            [coFields[1].Id] = Extraction("E52PWPA#ACJ")
+            [coFields[0].Id] = Extraction("HP Laptop 15-fd1652TU"),
+            [coFields[2].Id] = Extraction("E52PWPA#ACJ")
         };
         var configActual = new Dictionary<Guid, ConfiguredFieldExtraction>
         {
@@ -305,10 +343,9 @@ public sealed class LaptopLabelPipelineTests
     {
         var coFields = new[]
         {
-            CreateField("SERIAL_NUMBER", "S/N"),
-            CreateField("PART_NUMBER", "P/N"),
             CreateField("MODEL_NO", "Model No."),
-            CreateField("QR_CODE", "QR Code")
+            CreateField("QR_CODE", "QR Code"),
+            CreateField("PART_NUMBER", "P/N")
         };
         var configFields = new[]
         {
@@ -317,8 +354,8 @@ public sealed class LaptopLabelPipelineTests
         };
         var coActual = new Dictionary<Guid, ConfiguredFieldExtraction>
         {
-            [coFields[2].Id] = Extraction("HP Laptop 15-fd1652TU"),
-            [coFields[1].Id] = Extraction("E52PWPA#ACJ")
+            [coFields[0].Id] = Extraction("HP Laptop 15-fd1652TU"),
+            [coFields[2].Id] = Extraction("E52PWPA#ACJ")
         };
         var configActual = new Dictionary<Guid, ConfiguredFieldExtraction>
         {
@@ -342,11 +379,91 @@ public sealed class LaptopLabelPipelineTests
             unreadable.FieldComparisons.Single(comparison => comparison.FieldKey == "PART_NUMBER_TO_QUEUE_NO").Status);
     }
 
+    [Fact]
+    public void MasterLabelPairValidatorAcceptsMatchingModelAndPartQueueValues()
+    {
+        var coDefinitions = new[]
+        {
+            CreateField("MODEL_NO", "Model No."),
+            CreateField("QR_CODE", "QR Code"),
+            CreateField("PART_NUMBER", "P/N")
+        };
+        var configDefinitions = new[]
+        {
+            CreateField("MODEL_NO", "Model No."),
+            CreateField("QUEUE_NO", "Queue No.")
+        };
+        configDefinitions[0].ComparisonStrategy = FieldComparisonStrategy.CaseInsensitive;
+        configDefinitions[1].ComparisonStrategy = FieldComparisonStrategy.CaseInsensitive;
+        var coFields = new[]
+        {
+            MasterValue("MODEL_NO", "HP Laptop 15-fd1652TU"),
+            MasterValue("PART_NUMBER", "E52PWPA#ACJ")
+        };
+        var configFields = new[]
+        {
+            MasterValue("MODEL_NO", "15-FD1652TU"),
+            MasterValue("QUEUE_NO", "e52pwpa # acj")
+        };
+
+        MasterLabelPairValidator.Validate(
+            coDefinitions, coFields, configDefinitions, configFields, _comparisonService);
+    }
+
+    [Fact]
+    public void MasterLabelPairValidatorRejectsMismatchesAndUnreadableValues()
+    {
+        var coDefinitions = new[]
+        {
+            CreateField("MODEL_NO", "Model No."),
+            CreateField("PART_NUMBER", "P/N")
+        };
+        var configDefinitions = new[]
+        {
+            CreateField("MODEL_NO", "Model No."),
+            CreateField("QUEUE_NO", "Queue No.")
+        };
+        var coFields = new[]
+        {
+            MasterValue("MODEL_NO", "15-fd1652TU"),
+            MasterValue("PART_NUMBER", "E52PWPA#ACJ")
+        };
+        var configFields = new[]
+        {
+            MasterValue("MODEL_NO", "15-fd1652TU"),
+            MasterValue("QUEUE_NO", "E52PWPA#ACE")
+        };
+
+        Assert.Throws<InspectionConflictException>(() => MasterLabelPairValidator.Validate(
+            coDefinitions, coFields, configDefinitions, configFields, _comparisonService));
+        Assert.Throws<InspectionConflictException>(() => MasterLabelPairValidator.Validate(
+            coDefinitions,
+            [MasterValue("MODEL_NO", "15-fd1652TU"), MasterValue("PART_NUMBER", "E52PWPA#ACJ")],
+            configDefinitions,
+            [MasterValue("MODEL_NO", "15-fd1653TU"), MasterValue("QUEUE_NO", "E52PWPA#ACJ")],
+            _comparisonService));
+        Assert.Throws<InspectionValidationException>(() => MasterLabelPairValidator.Validate(
+            coDefinitions,
+            [MasterValue("MODEL_NO", "15-fd1652TU"), MasterValue("PART_NUMBER", "E52PWPA#ACJ", 0.1)],
+            configDefinitions,
+            [MasterValue("MODEL_NO", "15-fd1652TU"), MasterValue("QUEUE_NO", "E52PWPA#ACJ")],
+            _comparisonService));
+    }
+
     private FieldComparisonAssessment Compare(string fieldName, string master, string actual) =>
         _comparisonService.Compare(
             CreateField(fieldName, fieldName),
             new FieldObservation { Value = master, Confidence = 0.95 },
             new FieldObservation { Value = actual, Confidence = 0.95 });
+
+    private static MasterLabelField MasterValue(string key, string value, double confidence = 0.95) => new()
+    {
+        FieldKey = key,
+        DisplayName = key,
+        ExtractedValue = value,
+        Confidence = confidence,
+        Reason = "Test master value."
+    };
 
     private static ConfiguredFieldExtraction Extraction(string value) =>
         new(new FieldObservation { Value = value, Confidence = 0.95 }, null, "Test field value.");

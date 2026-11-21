@@ -1,7 +1,7 @@
 /*
   Dixon Label Verification database initializer.
   Run using SQL Server Management Studio or sqlcmd with an account allowed to create databases.
-  The application creates the first administrator separately via --bootstrap-admin.
+  The application creates the first Supervisor separately via --bootstrap-admin.
 */
 USE [master];
 GO
@@ -64,7 +64,7 @@ BEGIN TRY
             CreatedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_ApplicationUsers_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
             UpdatedAtUtc datetimeoffset(7) NULL,
             CONSTRAINT PK_ApplicationUsers PRIMARY KEY (Id),
-            CONSTRAINT CK_ApplicationUsers_Role CHECK (Role IN (N'Admin', N'Operator', N'Viewer')),
+            CONSTRAINT CK_ApplicationUsers_Role CHECK (Role IN (N'Supervisor', N'Operator')),
             CONSTRAINT FK_ApplicationUsers_UserRoles_Role FOREIGN KEY (Role) REFERENCES dbo.UserRoles(Code)
         );
         CREATE UNIQUE INDEX IX_ApplicationUsers_Username ON dbo.ApplicationUsers(Username);
@@ -187,6 +187,74 @@ BEGIN TRY
         );
         CREATE UNIQUE INDEX IX_FieldAliases_FieldDefinitionId_AliasText_Language
             ON dbo.FieldAliases(FieldDefinitionId, AliasText, Language);
+    END;
+
+    IF OBJECT_ID(N'dbo.MasterLabels', N'U') IS NULL
+    BEGIN
+        CREATE TABLE dbo.MasterLabels
+        (
+            Id uniqueidentifier NOT NULL CONSTRAINT DF_MasterLabels_Id DEFAULT NEWSEQUENTIALID(),
+            BrandId uniqueidentifier NOT NULL,
+            ModelId uniqueidentifier NOT NULL,
+            LabelProfileId uniqueidentifier NOT NULL,
+            LabelType nvarchar(20) NOT NULL,
+            OriginalFileName nvarchar(255) NOT NULL,
+            StoredFileName nvarchar(100) NOT NULL,
+            StoragePath nvarchar(1024) NOT NULL,
+            Sha256Hash nvarchar(64) NOT NULL,
+            ContentType nvarchar(100) NOT NULL,
+            SizeBytes bigint NOT NULL,
+            Width int NOT NULL,
+            Height int NOT NULL,
+            Engine nvarchar(100) NOT NULL,
+            EngineVersion nvarchar(100) NOT NULL,
+            OcrStatus nvarchar(32) NOT NULL,
+            RawExtractedText nvarchar(max) NULL,
+            OcrDataJson nvarchar(max) NULL,
+            OverallConfidence float NULL,
+            ProcessingDurationMs bigint NULL,
+            ImageQualityStatus nvarchar(30) NOT NULL,
+            UploadedByUserId uniqueidentifier NOT NULL,
+            UploadedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_MasterLabels_UploadedAtUtc DEFAULT SYSUTCDATETIME(),
+            CreatedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_MasterLabels_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
+            UpdatedAtUtc datetimeoffset(7) NULL,
+            CONSTRAINT PK_MasterLabels PRIMARY KEY (Id),
+            CONSTRAINT CK_MasterLabels_LabelType CHECK (LabelType IN (N'CO', N'CONFIG')),
+            CONSTRAINT CK_MasterLabels_SizeBytes CHECK (SizeBytes > 0),
+            CONSTRAINT FK_MasterLabels_LaptopModels_BrandId_ModelId
+                FOREIGN KEY (BrandId, ModelId) REFERENCES dbo.LaptopModels(BrandId, Id),
+            CONSTRAINT FK_MasterLabels_LabelProfiles_LabelProfileId
+                FOREIGN KEY (LabelProfileId) REFERENCES dbo.LabelProfiles(Id),
+            CONSTRAINT FK_MasterLabels_ApplicationUsers_UploadedByUserId
+                FOREIGN KEY (UploadedByUserId) REFERENCES dbo.ApplicationUsers(Id)
+        );
+        CREATE INDEX IX_MasterLabels_BrandId_ModelId ON dbo.MasterLabels(BrandId, ModelId);
+        CREATE INDEX IX_MasterLabels_LabelProfileId ON dbo.MasterLabels(LabelProfileId);
+        CREATE UNIQUE INDEX IX_MasterLabels_ModelId_LabelType ON dbo.MasterLabels(ModelId, LabelType);
+        CREATE INDEX IX_MasterLabels_UploadedByUserId ON dbo.MasterLabels(UploadedByUserId);
+    END;
+
+    IF OBJECT_ID(N'dbo.MasterLabelFields', N'U') IS NULL
+    BEGIN
+        CREATE TABLE dbo.MasterLabelFields
+        (
+            Id uniqueidentifier NOT NULL CONSTRAINT DF_MasterLabelFields_Id DEFAULT NEWSEQUENTIALID(),
+            MasterLabelId uniqueidentifier NOT NULL,
+            FieldKey nvarchar(100) NOT NULL,
+            DisplayName nvarchar(200) NOT NULL,
+            ExtractedValue nvarchar(2000) NULL,
+            NormalizedValue nvarchar(2000) NULL,
+            Confidence float NOT NULL,
+            BoundingBoxJson nvarchar(max) NULL,
+            Reason nvarchar(1000) NOT NULL,
+            CreatedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_MasterLabelFields_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
+            UpdatedAtUtc datetimeoffset(7) NULL,
+            CONSTRAINT PK_MasterLabelFields PRIMARY KEY (Id),
+            CONSTRAINT FK_MasterLabelFields_MasterLabels_MasterLabelId
+                FOREIGN KEY (MasterLabelId) REFERENCES dbo.MasterLabels(Id) ON DELETE CASCADE
+        );
+        CREATE UNIQUE INDEX IX_MasterLabelFields_MasterLabelId_FieldKey
+            ON dbo.MasterLabelFields(MasterLabelId, FieldKey);
     END;
 
     IF OBJECT_ID(N'dbo.InspectionSessions', N'U') IS NULL
@@ -447,12 +515,20 @@ BEGIN TRY
         CREATE INDEX IX_InspectionProcessingJobs_Status_CreatedAtUtc ON dbo.InspectionProcessingJobs(Status, CreatedAtUtc);
     END;
 
-    IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE Code = N'Admin')
-        INSERT dbo.UserRoles(Code, Name) VALUES (N'Admin', N'Administrator');
+    IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE Code = N'Supervisor')
+        INSERT dbo.UserRoles(Code, Name) VALUES (N'Supervisor', N'Supervisor');
     IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE Code = N'Operator')
         INSERT dbo.UserRoles(Code, Name) VALUES (N'Operator', N'Operator');
-    IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE Code = N'Viewer')
-        INSERT dbo.UserRoles(Code, Name) VALUES (N'Viewer', N'Viewer');
+
+    IF OBJECT_ID(N'dbo.CK_ApplicationUsers_Role', N'C') IS NOT NULL
+        ALTER TABLE dbo.ApplicationUsers DROP CONSTRAINT CK_ApplicationUsers_Role;
+
+    UPDATE dbo.ApplicationUsers SET Role = N'Supervisor' WHERE Role = N'Admin';
+    UPDATE dbo.ApplicationUsers SET Role = N'Operator' WHERE Role = N'Viewer';
+    DELETE dbo.UserRoles WHERE Code IN (N'Admin', N'Viewer');
+
+    ALTER TABLE dbo.ApplicationUsers
+        ADD CONSTRAINT CK_ApplicationUsers_Role CHECK (Role IN (N'Supervisor', N'Operator'));
 
     IF NOT EXISTS (SELECT 1 FROM dbo.Brands WHERE Code = N'HP')
         INSERT dbo.Brands(Id, Code, Name, IsActive, CreatedAtUtc)
@@ -507,10 +583,9 @@ BEGIN TRY
     );
     INSERT @HpFields(FieldKey, DisplayName, DisplayOrder)
     VALUES
-        (N'SERIAL_NUMBER', N'S/N', 1),
-        (N'PART_NUMBER', N'P/N', 2),
-        (N'MODEL_NO', N'Model No.', 3),
-        (N'QR_CODE', N'QR Code', 4);
+        (N'MODEL_NO', N'Model No.', 1),
+        (N'QR_CODE', N'QR Code', 2),
+        (N'PART_NUMBER', N'P/N', 3);
 
     INSERT dbo.FieldDefinitions
         (Id, LabelProfileId, FieldKey, DisplayName, DataType, IsRequired, IsCritical,
@@ -518,7 +593,6 @@ BEGIN TRY
          NumericAbsoluteTolerance, NumericRelativeTolerance, CreatedAtUtc)
     SELECT NEWID(), profile.Id, field.FieldKey, field.DisplayName, N'Text', 1, 1,
            CASE
-               WHEN field.FieldKey = N'SERIAL_NUMBER' THEN 0.45
                WHEN field.FieldKey = N'MODEL_NO' THEN 0.55
                ELSE 0.65
            END,
@@ -541,7 +615,7 @@ BEGIN TRY
     WHERE profile.ModelId = '73A3F07D-C906-4E49-A3DB-4854AB1A9D05'
       AND profile.ProfileVersion = 1
       AND profile.ProfileName = N'HP-15-FD1652TU-CO'
-      AND definition.FieldKey NOT IN (N'SERIAL_NUMBER', N'PART_NUMBER', N'MODEL_NO', N'QR_CODE');
+      AND definition.FieldKey NOT IN (N'PART_NUMBER', N'MODEL_NO', N'QR_CODE');
 
     UPDATE definition
        SET definition.DisplayName = field.DisplayName,
@@ -550,7 +624,6 @@ BEGIN TRY
            definition.IsCritical = 1,
            definition.OCRConfidenceThreshold =
                CASE
-                   WHEN field.FieldKey = N'SERIAL_NUMBER' THEN 0.45
                    WHEN field.FieldKey = N'MODEL_NO' THEN 0.55
                    ELSE 0.65
                END,
@@ -666,8 +739,6 @@ BEGIN TRY
     );
     INSERT @HpAliases(FieldKey, AliasText)
     VALUES
-        (N'SERIAL_NUMBER', N'S/N'),
-        (N'SERIAL_NUMBER', N'Serial Number'),
         (N'PART_NUMBER', N'P/N'),
         (N'PART_NUMBER', N'Part Number'),
         (N'MODEL_NO', N'Model'),

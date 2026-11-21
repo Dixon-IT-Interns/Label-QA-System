@@ -11,7 +11,11 @@ public interface IInspectionManagementService
         string? ipAddress,
         CancellationToken cancellationToken);
 
-    Task<PagedInspectionResponse> GetAllAsync(InspectionListQuery query, CancellationToken cancellationToken);
+    Task<PagedInspectionResponse> GetAllAsync(
+        InspectionListQuery query,
+        Guid userId,
+        bool isSupervisor,
+        CancellationToken cancellationToken);
     Task<InspectionDetailsResponse> GetByIdAsync(Guid id, CancellationToken cancellationToken);
     Task<InspectionDetailsResponse> UpdateAsync(
         Guid id,
