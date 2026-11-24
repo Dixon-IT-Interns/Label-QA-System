@@ -117,17 +117,19 @@ function InspectionHistory() {
                     <div className="history-mobile-card-heading"><div><strong>{row.inspectionNumber}</strong><small>{new Date(row.createdAtUtc).toLocaleString()}</small></div><StatusPill status={row.status} /></div>
                     <div className="history-mobile-product"><strong>{row.brandName}</strong><span>{row.modelName} · {row.modelNumber}</span></div>
                     <div className="history-mobile-order"><span>Production order</span><strong>{row.productionOrderNumber || '—'}</strong></div>
-                    <div className="history-mobile-stages"><span>CO <StatusPill status={row.coStatus} /></span><span>Config <StatusPill status={row.configStatus} /></span><ArrowRight aria-hidden="true" size={16} /></div>
+                    <div className="history-mobile-order"><span>Inspected by</span><strong>{row.inspectorName || '—'}{row.inspectorEmployeeId ? ` (${row.inspectorEmployeeId})` : ''}</strong></div>
+                    <div className="history-mobile-stages"><span>COO <StatusPill status={row.coStatus} /></span><span>Config <StatusPill status={row.configStatus} /></span><ArrowRight aria-hidden="true" size={16} /></div>
                   </Link>
                 ))}
               </div>
               <div className="table-wrap history-desktop-table">
               <table className="data-table">
-                <thead><tr><th>Inspection</th><th>Brand / model</th><th>Production order</th><th>Started</th><th>CO</th><th>Config</th><th>Status</th></tr></thead>
+                <thead><tr><th>Inspection</th><th>Brand / model</th><th>Inspected by</th><th>Production order</th><th>Started</th><th>COO</th><th>Config</th><th>Status</th></tr></thead>
                 <tbody>{rows.map((row) => (
                   <tr key={row.id}>
                     <td><Link className="table-link" to={`/inspections/${row.id}`}>{row.inspectionNumber}</Link></td>
                     <td>{row.brandName}<small className="table-secondary-cell">{row.modelName} · {row.modelNumber}</small></td>
+                    <td>{row.inspectorName || '—'}<small className="table-secondary-cell">{row.inspectorEmployeeId || 'No employee ID'}</small></td>
                     <td>{row.productionOrderNumber || '—'}<small className="table-secondary-cell">{row.workOrderNumber || 'No work order'}</small></td>
                     <td>{new Date(row.createdAtUtc).toLocaleString()}</td>
                     <td><StatusPill status={row.coStatus} /></td>

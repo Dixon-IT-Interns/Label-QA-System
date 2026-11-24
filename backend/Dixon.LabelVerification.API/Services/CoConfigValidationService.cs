@@ -40,7 +40,7 @@ public static class CoConfigValidationService
             if (!labelStagesPassed)
             {
                 status = InspectionStatus.BLOCKED;
-                reason = "CO / CONFIG validation was not run because both label comparison stages must pass.";
+                reason = "COO / CONFIG validation was not run because both label comparison stages must pass.";
             }
             else if (coField is not null && configField is not null
                 && coObservation is not null && configObservation is not null
@@ -96,7 +96,7 @@ public static class CoConfigValidationService
             MismatchedFields = comparisons.Count(comparison => comparison.Status == InspectionStatus.FAIL),
             UnreadableFields = comparisons.Count(comparison => comparison.Status == InspectionStatus.REVIEW_REQUIRED),
             StartedAtUtc = startedAtUtc,
-            Remarks = "Validates actual CO Model No. against actual CONFIG Model No., and actual CO P/N against actual CONFIG Queue No."
+            Remarks = "Validates actual COO Model No. against actual CONFIG Model No., and actual COO P/N against actual CONFIG Queue No."
         };
         foreach (var comparison in comparisons)
             stage.FieldComparisons.Add(comparison);

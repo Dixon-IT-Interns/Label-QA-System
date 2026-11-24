@@ -113,7 +113,9 @@ public static class DefaultLabelProfileProvisioner
                 new("QR_CODE", "QR Code", 2, 0.65, FieldComparisonStrategy.Exact,
                     ["QR", "QRCode"]),
                 new("PART_NUMBER", "P/N", 3, 0.65, FieldComparisonStrategy.Exact,
-                    ["PN", "Part No", "Part Number"])
+                    ["PN", "Part No", "Part Number"]),
+                new("R_NUMBER", "R Number", 4, 0.40, FieldComparisonStrategy.Exact,
+                    ["R No", "Registration Number", "Registration No"])
             ],
             LabelType.CONFIG =>
             [

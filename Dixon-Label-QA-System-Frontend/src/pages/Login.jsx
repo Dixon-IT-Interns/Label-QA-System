@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react'
+import { Eye, EyeOff, IdCard, LockKeyhole } from 'lucide-react'
 import BrandLogo from '../components/BrandLogo.jsx'
 import useAuth from '../hooks/useAuth.js'
 import { getAuthErrorMessage } from '../services/authApi.js'
@@ -37,8 +37,8 @@ function Login() {
         <div className="login-brand"><BrandLogo className="login-brand-logo" /></div>
         <div className="login-heading"><h1>Secure Access</h1><p>Sign in to continue</p></div>
         <div className="login-field-row">
-          <div aria-hidden="true" className="login-field-icon"><Mail size={22} strokeWidth={2} /></div>
-          <div className="form-field login-field"><label htmlFor="login-identifier">Email / Username</label><div className="login-input-wrap"><input autoComplete="username" id="login-identifier" onChange={(event) => setForm({ ...form, identifier: event.target.value })} placeholder="Enter your email or username" required value={form.identifier} /></div></div>
+          <div aria-hidden="true" className="login-field-icon"><IdCard size={22} strokeWidth={2} /></div>
+          <div className="form-field login-field"><label htmlFor="login-identifier">EMP_ID/Email</label><div className="login-input-wrap"><input autoComplete="username" id="login-identifier" onChange={(event) => setForm({ ...form, identifier: event.target.value })} placeholder="Enter EMP_ID or email" required value={form.identifier} /></div></div>
         </div>
         <div className="login-field-row">
           <div aria-hidden="true" className="login-field-icon"><LockKeyhole size={21} strokeWidth={2} /></div>

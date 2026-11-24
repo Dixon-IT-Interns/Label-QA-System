@@ -52,7 +52,7 @@ public sealed class InspectionManagementService(
             .Where(x => x.ModelId == model.Id && x.IsActive)
             .ToListAsync(cancellationToken);
         var coProfile = profiles.SingleOrDefault(x => x.LabelType == LabelType.CO)
-            ?? throw new InspectionConflictException("No active CO label profile is configured for this model.");
+            ?? throw new InspectionConflictException("No active COO label profile is configured for this model.");
         var configProfile = profiles.SingleOrDefault(x => x.LabelType == LabelType.CONFIG)
             ?? throw new InspectionConflictException("No active CONFIG label profile is configured for this model.");
         var coFields = CoComparisonFieldSelector.Select(coProfile.FieldDefinitions);
@@ -95,7 +95,7 @@ public sealed class InspectionManagementService(
                 inspection, configMaster, configFields, operatorUserId, copiedPaths, cancellationToken));
             db.InspectionSessions.Add(inspection);
             AddLog(inspection, operatorUserId, "CREATED",
-                "Inspection created with pinned CO and CONFIG profiles and saved model master labels.",
+            "Inspection created with pinned COO and CONFIG profiles and saved model master labels.",
                 null, null, ipAddress);
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -126,7 +126,7 @@ public sealed class InspectionManagementService(
             currentUser.EnsureCanAccessBrand(query.BrandId.Value);
         var inspections = InspectionQueryScope.Apply(
                 db.InspectionSessions.AsNoTracking(), userId, role, brandId)
-            .Include(x => x.Brand).Include(x => x.Model).AsQueryable();
+            .Include(x => x.Brand).Include(x => x.Model).Include(x => x.CreatedByUser).AsQueryable();
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var search = query.Search.Trim();
@@ -159,7 +159,7 @@ public sealed class InspectionManagementService(
     public async Task<InspectionDetailsResponse> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         var inspection = await db.InspectionSessions.AsNoTracking()
-            .Include(x => x.Brand).Include(x => x.Model)
+            .Include(x => x.Brand).Include(x => x.Model).Include(x => x.CreatedByUser)
             .Include(x => x.LabelProfileCO).Include(x => x.LabelProfileConfig)
             .Include(x => x.Images).ThenInclude(x => x.OcrResults).ThenInclude(x => x.ExtractedFields)
             .Include(x => x.StageResults).ThenInclude(x => x.FieldComparisons)
@@ -706,7 +706,7 @@ public sealed class InspectionManagementService(
                 .Where(x => profileIds.Contains(x.Id))
                 .ToListAsync(cancellationToken);
             var coProfile = profiles.SingleOrDefault(x => x.Id == inspection.LabelProfileCOId)
-                ?? throw new InspectionProcessingException("The inspection's pinned CO profile is unavailable.");
+                ?? throw new InspectionProcessingException("The inspection's pinned COO profile is unavailable.");
             var configProfile = profiles.SingleOrDefault(x => x.Id == inspection.LabelProfileConfigId)
                 ?? throw new InspectionProcessingException("The inspection's pinned CONFIG profile is unavailable.");
             var coFields = CoComparisonFieldSelector.Select(coProfile.FieldDefinitions);
@@ -814,13 +814,11 @@ public sealed class InspectionManagementService(
                             .Distinct(StringComparer.OrdinalIgnoreCase).Count() != configuredCoKeys.Count)
                     {
                         throw new InspectionProcessingException(
-                            "CO OCR must return one candidate for each configured Model No., QR Code, and P/N field.");
+                            "COO OCR must return one candidate for each configured Model No., QR Code, P/N, and R Number field.");
                     }
 
                     result = result with
                     {
-                        RawText = string.Empty,
-                        Lines = [],
                         FieldCandidates = coCandidates,
                         OcrConfidence = coCandidates.Average(candidate => candidate.Confidence)
                     };
@@ -1471,7 +1469,8 @@ public sealed class InspectionManagementService(
         new(item.Id, item.InspectionNumber, item.BrandId, item.Brand.Name, item.ModelId,
             item.Model.Code, item.Model.Name, item.ProductionOrderNumber, item.WorkOrderNumber,
             item.Status, item.COStatus, item.ConfigStatus, item.SerialStatus,
-            item.CreatedAtUtc, item.CompletedAtUtc);
+            item.CreatedAtUtc, item.CompletedAtUtc, item.CreatedByUser?.FullName,
+            item.CreatedByUser?.EmployeeId);
 
     private static InspectionImageResponse ToImageResponse(InspectionImage item) =>
         new(item.Id, item.ImageType, item.OriginalFileName, item.ContentType, item.SizeBytes,

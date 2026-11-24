@@ -3,7 +3,8 @@ namespace Dixon.LabelVerification.API.Entities;
 public sealed class User : AuditedEntity
 {
     public required string FullName { get; set; }
-    public required string Username { get; set; }
+    // Persisted in the legacy Username column for database compatibility.
+    public required string EmployeeId { get; set; }
     public required string Email { get; set; }
     public required string PasswordHash { get; set; }
     public required string Role { get; set; }

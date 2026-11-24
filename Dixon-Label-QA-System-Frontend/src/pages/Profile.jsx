@@ -23,7 +23,7 @@ function Profile() {
       <section className="panel profile-account-card">
         <div aria-hidden="true" className="profile-avatar">{initials}</div>
         <h2>{user?.fullName || 'Dixon Lens user'}</h2>
-        <p>{user?.email || user?.username}</p>
+        <p>{user?.employeeId || user?.email}</p>
         <span className="profile-role"><ShieldCheck size={13} /> {user?.role || 'User'}</span>
       </section>
       <nav aria-label="Profile options" className="panel profile-options">

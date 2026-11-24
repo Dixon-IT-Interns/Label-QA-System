@@ -336,7 +336,7 @@ function LabelProfileManagement() {
           <EmptyState description={error} icon={FileStack} title="Could not load label profiles" />
         ) : profiles.length === 0 ? (
           <EmptyState
-            description={brands.length ? 'Add a CO or Config profile to define fields for a brand or specific model.' : 'Create a brand before configuring label profiles.'}
+            description={brands.length ? 'Add a COO or Config profile to define fields for a brand or specific model.' : 'Create a brand before configuring label profiles.'}
             icon={FileStack}
             title={brands.length ? 'No label profiles configured' : 'No brands available'}
           />
@@ -427,7 +427,7 @@ function LabelProfileManagement() {
             <div className="form-grid">
               <label className="form-field"><span>Label type</span>
                 <select onChange={(event) => setProfileForm({ ...profileForm, labelType: event.target.value })} value={profileForm.labelType}>
-                  <option value="CO">CO</option><option value="CONFIG">Config</option>
+                  <option value="CO">COO</option><option value="CONFIG">Config</option>
                 </select>
               </label>
               <label className="form-field"><span>Version</span>

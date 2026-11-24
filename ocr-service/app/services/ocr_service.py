@@ -92,8 +92,12 @@ class OCRService:
         if is_co_label:
             logger.info("Targeted CO OCR started; engine=%s", self._provider.name)
             field_candidates, engine_version = self._extract_co_fields(cleaned_image, active_fields)
-            lines = []
-            raw_text = ""
+            evidence_result = self._provider.extract(cleaned_image)
+            lines = evidence_result.lines
+            raw_text = evidence_result.raw_text
+            engine_version = ", ".join(
+                dict.fromkeys(version for version in (engine_version, evidence_result.version) if version)
+            )
         elif is_config_pair:
             active_fields = [
                 field for field in active_fields
@@ -288,7 +292,11 @@ class OCRService:
 
         for field in fields:
             kind = _normalized_field_name(field.field_name)
-            if kind in {"serialnumber", "partnumber"}:
+            if kind == "rnumber":
+                candidate, versions = _extract_co_r_number(field, image, self._provider)
+                candidates_by_kind[kind] = candidate
+                engine_versions.extend(versions)
+            elif kind in {"serialnumber", "partnumber"}:
                 candidate, versions = _extract_co_labeled_value(
                     field,
                     image,
@@ -521,7 +529,58 @@ def _select_co_fields(fields: list[ConfiguredField]) -> list[ConfiguredField]:
             by_name[kind] = field
     if any(name not in by_name for name in required):
         raise ValueError("CO field_config must contain one each of MODEL_NO, QR_CODE, and PART_NUMBER.")
-    return [by_name[name] for name in required]
+    selected = [by_name[name] for name in required]
+    r_number = next(
+        (field for field in fields if _normalized_field_name(field.field_name) == "rnumber"),
+        None,
+    )
+    if r_number is not None:
+        selected.append(r_number)
+    return selected
+
+
+def _extract_co_r_number(
+    field: ConfiguredField,
+    image: np.ndarray,
+    provider: OCRProvider,
+) -> tuple[FieldCandidate, list[str]]:
+    pattern = re.compile(r"(?<![A-Z0-9])R\s*[-–—]\s*(?P<number>\d{8})(?!\d)", re.IGNORECASE)
+    observed: dict[str, list[tuple[str, float, list[list[float]] | None]]] = {}
+    versions: list[str] = []
+    result = provider.extract(image)
+    if result.version:
+        versions.append(result.version)
+    for line in result.lines:
+        match = pattern.search(line.text)
+        if match is None:
+            continue
+        value = f"R-{match.group('number')}"
+        observed.setdefault(value.casefold(), []).append((value, line.confidence, line.box))
+
+    if len(observed) == 1:
+        detections = next(iter(observed.values()))
+        value, confidence, box = max(detections, key=lambda detection: detection[1])
+        return FieldCandidate(
+            field_name=field.field_name,
+            value=value,
+            confidence=confidence,
+            box=box,
+            status="DETECTED",
+            reason="The R number was detected from the standalone R-number pattern on the COO label.",
+        ), versions
+    if len(observed) > 1:
+        return FieldCandidate(
+            field_name=field.field_name,
+            confidence=0,
+            status="AMBIGUOUS",
+            reason="Multiple distinct R numbers were detected on the COO label.",
+        ), versions
+    return FieldCandidate(
+        field_name=field.field_name,
+        confidence=0,
+        status="NOT_FOUND",
+        reason="No R number matching the expected R-######## format was detected on the COO label.",
+    ), versions
 
 
 def _extract_co_labeled_value(

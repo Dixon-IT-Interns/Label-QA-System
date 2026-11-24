@@ -45,7 +45,9 @@ public sealed record InspectionSummaryResponse(
     InspectionStatus ConfigStatus,
     InspectionStatus SerialStatus,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? CompletedAtUtc);
+    DateTimeOffset? CompletedAtUtc,
+    string? InspectorName,
+    string? InspectorEmployeeId);
 
 public sealed record InspectionDetailsResponse(
     InspectionSummaryResponse Inspection,

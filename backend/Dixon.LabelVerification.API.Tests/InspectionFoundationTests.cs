@@ -352,7 +352,7 @@ public sealed class InspectionFoundationTests
         var user = new User
         {
             FullName = "Operator",
-            Username = "operator",
+            EmployeeId = "operator",
             Email = "operator@example.invalid",
             PasswordHash = string.Empty,
             Role = "Operator"

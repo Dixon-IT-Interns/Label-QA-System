@@ -30,7 +30,7 @@ public sealed class InspectionWorkflowService : IInspectionWorkflowService
         {
             return new InspectionWorkflowAssessment(
                 InspectionStatus.BLOCKED,
-                "CO / CONFIG validation requires both label comparison stages to pass.");
+                "COO / CONFIG validation requires both label comparison stages to pass.");
         }
 
         if (coStage is null || configStage is null || serialStage is null
@@ -45,20 +45,20 @@ public sealed class InspectionWorkflowService : IInspectionWorkflowService
         {
             return new InspectionWorkflowAssessment(
                 InspectionStatus.BLOCKED,
-                "CO / CONFIG validation requires both label comparison stages to pass.");
+                "COO / CONFIG validation requires both label comparison stages to pass.");
         }
 
         if (serialStage == InspectionStatus.READY)
         {
             return new InspectionWorkflowAssessment(
                 InspectionStatus.PROCESSING,
-                "CO / CONFIG validation has not completed.");
+                "COO / CONFIG validation has not completed.");
         }
 
         return serialStage is InspectionStatus.PASS or InspectionStatus.NOT_APPLICABLE
             ? new InspectionWorkflowAssessment(InspectionStatus.PASS, "All applicable inspection stages passed.")
             : new InspectionWorkflowAssessment(
                 InspectionStatus.REVIEW_REQUIRED,
-                "CO / CONFIG validation did not complete with readable evidence.");
+                "COO / CONFIG validation did not complete with readable evidence.");
     }
 }

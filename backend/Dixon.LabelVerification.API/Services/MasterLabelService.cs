@@ -488,6 +488,13 @@ public sealed class MasterLabelService(
                     display_name = "P/N",
                     aliases = new[] { "PN", "Part No", "Part Number" },
                     confidence_threshold = 0.65
+                },
+                new
+                {
+                    field_name = "R_NUMBER",
+                    display_name = "R Number",
+                    aliases = new[] { "R No", "Registration Number", "Registration No" },
+                    confidence_threshold = 0.40
                 }
             ],
             LabelType.CONFIG =>
@@ -597,11 +604,9 @@ public sealed class MasterLabelService(
                 || candidates.Select(candidate => candidate.FieldName)
                     .Distinct(StringComparer.OrdinalIgnoreCase).Count() != configuredKeys.Count)
                 throw new InspectionProcessingException(
-                    "CO OCR must return one candidate for each configured Model No., QR Code, and P/N field.");
+                            "COO OCR must return one candidate for each configured Model No., QR Code, P/N, and R Number field.");
             ocr = ocr with
             {
-                RawText = string.Empty,
-                Lines = [],
                 FieldCandidates = candidates,
                 OcrConfidence = candidates.Average(candidate => candidate.Confidence)
             };

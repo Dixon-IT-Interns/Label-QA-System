@@ -8,7 +8,8 @@ public static class CoComparisonFieldSelector
     [
         "MODEL_NO",
         "QR_CODE",
-        "PART_NUMBER"
+        "PART_NUMBER",
+        "R_NUMBER"
     ];
 
     public static IReadOnlyList<FieldDefinition> Select(IEnumerable<FieldDefinition> definitions)
@@ -26,7 +27,7 @@ public static class CoComparisonFieldSelector
                 != RequiredFieldNames.Length)
         {
             throw new InspectionProcessingException(
-                "The pinned CO profile must have exactly one active MODEL_NO, QR_CODE, and PART_NUMBER field.");
+                "The pinned COO profile must have exactly one active MODEL_NO, QR_CODE, PART_NUMBER, and R_NUMBER field.");
         }
 
         return fields;

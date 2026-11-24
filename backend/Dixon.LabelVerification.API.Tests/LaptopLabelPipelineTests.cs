@@ -217,7 +217,7 @@ public sealed class LaptopLabelPipelineTests
     }
 
     [Fact]
-    public void CoSelectorReturnsOnlyModelQrAndPartNumberFields()
+    public void CoSelectorReturnsOnlyConfiguredCooComparisonFields()
     {
         var fields = new[]
         {
@@ -225,6 +225,7 @@ public sealed class LaptopLabelPipelineTests
             CreateField("MODEL_NO", "Model No."),
             CreateField("QR_CODE", "QR Code"),
             CreateField("PART_NUMBER", "P/N"),
+            CreateField("R_NUMBER", "R Number"),
             CreateField("PROCESSOR", "Processor"),
             CreateField("WORK_ORDER", "Work Order")
         };
@@ -232,12 +233,12 @@ public sealed class LaptopLabelPipelineTests
         var selected = CoComparisonFieldSelector.Select(fields);
 
         Assert.Equal(
-            ["MODEL_NO", "QR_CODE", "PART_NUMBER"],
+            ["MODEL_NO", "QR_CODE", "PART_NUMBER", "R_NUMBER"],
             selected.Select(field => field.FieldName));
     }
 
     [Fact]
-    public void CoSelectorRequiresAllThreeFieldsAndIdentifierComparisonPreservesExactEvidence()
+    public void CoSelectorRequiresAllCooFieldsAndIdentifierComparisonPreservesExactEvidence()
     {
         var exception = Assert.Throws<InspectionProcessingException>(() =>
             CoComparisonFieldSelector.Select([
@@ -270,7 +271,7 @@ public sealed class LaptopLabelPipelineTests
         var configProfile = DefaultLabelProfileProvisioner.CreateDefaultProfile(model, LabelType.CONFIG, 1);
 
         Assert.Equal(
-            ["MODEL_NO", "QR_CODE", "PART_NUMBER"],
+            ["MODEL_NO", "QR_CODE", "PART_NUMBER", "R_NUMBER"],
             coProfile.FieldDefinitions.Select(field => field.FieldName));
         Assert.Equal(
             ["MODEL_NO", "QUEUE_NO"],
