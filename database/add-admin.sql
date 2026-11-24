@@ -5,7 +5,7 @@ SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
 DECLARE @FullName nvarchar(150) = N'Saksham Jain';
-DECLARE @Username nvarchar(100) = N'saksham';
+DECLARE @EmployeeId nvarchar(100) = N'saksham';
 DECLARE @Email nvarchar(256) = N'sjsaksham.work@gmail.com';
 DECLARE @PasswordHash nvarchar(512) = N'PASTE_RAW_BASE64_HASH_HERE';
 DECLARE @UserId uniqueidentifier;
@@ -30,7 +30,7 @@ BEGIN TRY
 
     SELECT @UserId = Id
     FROM dbo.ApplicationUsers WITH (UPDLOCK, HOLDLOCK)
-    WHERE Username = @Username;
+    WHERE Username = @EmployeeId;
 
     IF EXISTS
        (SELECT 1 FROM dbo.ApplicationUsers
@@ -44,8 +44,9 @@ BEGIN TRY
 
     IF @UserId IS NULL
     BEGIN
+        -- Username is the legacy database column; the application treats it as EmployeeId.
         INSERT dbo.ApplicationUsers (FullName, Username, Email, PasswordHash, Role, BrandId)
-        VALUES (@FullName, @Username, @Email, @PasswordHash, N'Admin', NULL);
+        VALUES (@FullName, @EmployeeId, @Email, @PasswordHash, N'Admin', NULL);
 
         SET @WasCreated = 1;
     END

@@ -9,7 +9,7 @@ import { getBrands } from '../services/configurationApi.js'
 
 const blankUser = {
   fullName: '',
-  username: '',
+  employeeId: '',
   email: '',
   password: '',
   confirmPassword: '',
@@ -72,7 +72,7 @@ function UserManagement() {
     setForm(account
       ? {
           fullName: account.fullName,
-          username: account.username,
+          employeeId: account.employeeId,
           email: account.email,
           password: '',
           confirmPassword: '',
@@ -100,7 +100,7 @@ function UserManagement() {
 
       const payload = {
         fullName: form.fullName,
-        username: form.username,
+        employeeId: form.employeeId,
         email: form.email,
         password: form.password || null,
         role: isAdmin ? form.role : 'Operator',
@@ -119,7 +119,7 @@ function UserManagement() {
   }
 
   async function remove(account) {
-    if (!window.confirm(`Permanently delete "${account.username}"? Inspection history will be preserved.`)) return
+    if (!window.confirm(`Permanently delete "${account.employeeId}"? Inspection history will be preserved.`)) return
     setSaving(true)
     setError('')
     try {
@@ -157,12 +157,12 @@ function UserManagement() {
         : users.length === 0 ? <EmptyState description={error || 'No user accounts are available.'} icon={Users} title="No users found" />
           : <div className="table-wrap">
             <table className="data-table">
-              <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Brand</th><th>Created</th><th>Last sign-in</th><th /></tr></thead>
+              <thead><tr><th>Name</th><th>Employee ID</th><th>Email</th><th>Role</th><th>Brand</th><th>Created</th><th>Last sign-in</th><th /></tr></thead>
               <tbody>{users.map((account) => {
                 const canEdit = isAdmin || account.role === 'Operator'
                 return <tr key={account.id}>
                   <td className="table-primary-cell">{account.fullName}</td>
-                  <td>{account.username}</td>
+                  <td>{account.employeeId}</td>
                   <td>{account.email}</td>
                   <td>{account.role}</td>
                   <td>{account.brandId ? brandNameById.get(account.brandId) || 'Assigned Brand' : '—'}</td>
@@ -203,7 +203,7 @@ function UserForm({ brands, error, form, isAdmin, editing, onCancel, saving, set
 
   return <form className="configuration-form" onSubmit={submit}>
     <label className="form-field"><span>Full name</span><input autoFocus maxLength="150" minLength="2" onChange={(event) => update('fullName', event.target.value)} required value={form.fullName} /></label>
-    <label className="form-field"><span>Username</span><input maxLength="100" onChange={(event) => update('username', event.target.value)} pattern="[A-Za-z0-9._-]+" required value={form.username} /></label>
+    <label className="form-field"><span>Employee ID</span><input maxLength="100" onChange={(event) => update('employeeId', event.target.value)} pattern="[A-Za-z0-9._-]+" required value={form.employeeId} /></label>
     <label className="form-field"><span>Email</span><input maxLength="256" onChange={(event) => update('email', event.target.value)} required type="email" value={form.email} /></label>
     {isAdmin
       ? <label className="form-field"><span>Role</span><select onChange={(event) => updateRole(event.target.value)} required value={form.role}>{roleOptions.map((role) => <option key={role} value={role}>{role}</option>)}</select></label>

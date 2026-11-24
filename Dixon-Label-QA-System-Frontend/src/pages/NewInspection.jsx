@@ -16,7 +16,7 @@ import { getBrands, getLabelProfiles, getModels } from '../services/configuratio
 import { getMasterLabelAvailability } from '../services/masterLabelApi.js'
 
 const imageSlots = [
-  { type: 'ACTUAL_CO', title: 'Actual CO', description: 'Unit CO label' },
+  { type: 'ACTUAL_CO', title: 'Actual COO', description: 'Unit COO label' },
   { type: 'ACTUAL_CONFIG', title: 'Actual Config', description: 'Unit configuration label' },
 ]
 const requiredImageTypes = ['MASTER_CO', 'ACTUAL_CO', 'MASTER_CONFIG', 'ACTUAL_CONFIG']
@@ -216,7 +216,7 @@ function NewInspection() {
       return
     }
     if (!hasCoProfile || !hasConfigProfile) {
-      setError('The selected model needs active CO and CONFIG profiles before an inspection can be created.')
+      setError('The selected model needs active COO and CONFIG profiles before an inspection can be created.')
       return
     }
     if (masterAvailabilityLoading || !masterAvailability?.hasCoMaster || !masterAvailability?.hasConfigMaster) {
@@ -404,7 +404,7 @@ function NewInspection() {
             />
           </label>
         </div>
-        {form.modelId && (!hasCoProfile || !hasConfigProfile) && <div className="configuration-alert" role="alert">This model needs one active CO and one active CONFIG profile before an inspection can be created.</div>}
+        {form.modelId && (!hasCoProfile || !hasConfigProfile) && <div className="configuration-alert" role="alert">This model needs one active COO and one active CONFIG profile before an inspection can be created.</div>}
         {form.modelId && masterAvailabilityLoading && <div className="inspection-notice" role="status">Checking saved master labels…</div>}
         {form.modelId && !masterAvailabilityLoading && masterAvailability?.message
           && <div className="configuration-alert" role="alert">{masterAvailability.message}</div>}
@@ -449,7 +449,7 @@ function NewInspection() {
             )
           })}
         </div>
-        {!loading && brands.length === 0 && <div className="configuration-alert" role="alert">No brands are configured. Add a brand, model, and active CO/CONFIG profiles first.</div>}
+        {!loading && brands.length === 0 && <div className="configuration-alert" role="alert">No brands are configured. Add a brand, model, and active COO/CONFIG profiles first.</div>}
         <footer className="inspection-continue-footer">
           {inspection && <span>Inspection <strong>{inspection.inspection.inspectionNumber}</strong></span>}
           <button className="button button-primary" disabled={busy || loading || masterAvailabilityLoading || !masterAvailability?.hasCoMaster || !masterAvailability?.hasConfigMaster || !allImagesReady} type="submit">

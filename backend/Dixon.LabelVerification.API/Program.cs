@@ -130,11 +130,12 @@ if (generatedDevelopmentSigningKey)
 if (args.Contains("--bootstrap-admin", StringComparer.Ordinal))
 {
     var fullName = Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_FULL_NAME");
-    var username = Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_USERNAME");
+    var employeeId = Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_EMPLOYEE_ID")
+        ?? Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_USERNAME");
     var email = Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_EMAIL");
     var password = Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_PASSWORD");
     if (string.IsNullOrWhiteSpace(fullName)
-        || string.IsNullOrWhiteSpace(username)
+        || string.IsNullOrWhiteSpace(employeeId)
         || string.IsNullOrWhiteSpace(email)
         || string.IsNullOrWhiteSpace(password)
         || password.Length < 12)
@@ -154,7 +155,7 @@ if (args.Contains("--bootstrap-admin", StringComparer.Ordinal))
     var admin = new User
     {
         FullName = fullName.Trim(),
-        Username = username.Trim(),
+        EmployeeId = employeeId.Trim(),
         Email = email.Trim(),
         Role = ApplicationRoles.Admin,
         PasswordHash = string.Empty
@@ -163,7 +164,7 @@ if (args.Contains("--bootstrap-admin", StringComparer.Ordinal))
     db.Users.Add(admin);
     await db.SaveChangesAsync();
     await transaction.CommitAsync();
-    Console.WriteLine($"Admin '{admin.Username}' created.");
+    Console.WriteLine($"Admin employee ID '{admin.EmployeeId}' created.");
     return;
 }
 

@@ -25,7 +25,7 @@ public sealed class JwtTokenService(IConfiguration configuration)
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.FullName),
-            new Claim("preferred_username", user.Username),
+            new Claim("preferred_username", user.EmployeeId),
             new Claim(ClaimTypes.Email, user.Email),
             new Claim(ClaimTypes.Role, user.Role)
         };

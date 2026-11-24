@@ -13,12 +13,17 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
                 "CK_ApplicationUsers_Role",
                 "[Role] IN ('Admin', 'Supervisor', 'Operator')"));
         entity.Property(x => x.FullName).HasMaxLength(150).IsRequired();
-        entity.Property(x => x.Username).HasMaxLength(100).IsRequired();
+        entity.Property(x => x.EmployeeId)
+            .HasColumnName("Username")
+            .HasMaxLength(100)
+            .IsRequired();
         entity.Property(x => x.Email).HasMaxLength(256).IsRequired();
         entity.Property(x => x.PasswordHash).HasMaxLength(512).IsRequired();
         entity.Property(x => x.Role).HasMaxLength(20).IsRequired();
         entity.Property(x => x.PasswordResetTokenHash).HasMaxLength(64);
-        entity.HasIndex(x => x.Username).IsUnique();
+        entity.HasIndex(x => x.EmployeeId)
+            .HasDatabaseName("IX_ApplicationUsers_Username")
+            .IsUnique();
         entity.HasIndex(x => x.Email).IsUnique();
         entity.HasIndex(x => x.BrandId);
         entity.HasOne(x => x.UserRole).WithMany(x => x.Users)

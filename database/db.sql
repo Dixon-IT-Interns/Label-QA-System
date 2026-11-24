@@ -718,7 +718,8 @@ BEGIN TRY
     VALUES
         (N'MODEL_NO', N'Model No.', 1),
         (N'QR_CODE', N'QR Code', 2),
-        (N'PART_NUMBER', N'P/N', 3);
+        (N'PART_NUMBER', N'P/N', 3),
+        (N'R_NUMBER', N'R Number', 4);
 
     INSERT dbo.FieldDefinitions
         (Id, LabelProfileId, FieldKey, DisplayName, DataType, IsRequired, IsCritical,
@@ -727,6 +728,7 @@ BEGIN TRY
     SELECT NEWID(), profile.Id, field.FieldKey, field.DisplayName, N'Text', 1, 1,
            CASE
                WHEN field.FieldKey = N'MODEL_NO' THEN 0.55
+               WHEN field.FieldKey = N'R_NUMBER' THEN 0.40
                ELSE 0.65
            END,
            field.DisplayOrder, 1,
@@ -748,7 +750,7 @@ BEGIN TRY
     WHERE profile.ModelId = '73A3F07D-C906-4E49-A3DB-4854AB1A9D05'
       AND profile.ProfileVersion = 1
       AND profile.ProfileName = N'HP-15-FD1652TU-CO'
-      AND definition.FieldKey NOT IN (N'PART_NUMBER', N'MODEL_NO', N'QR_CODE');
+      AND definition.FieldKey NOT IN (N'PART_NUMBER', N'MODEL_NO', N'QR_CODE', N'R_NUMBER');
 
     UPDATE definition
        SET definition.DisplayName = field.DisplayName,
@@ -758,6 +760,7 @@ BEGIN TRY
            definition.OCRConfidenceThreshold =
                CASE
                    WHEN field.FieldKey = N'MODEL_NO' THEN 0.55
+                   WHEN field.FieldKey = N'R_NUMBER' THEN 0.40
                    ELSE 0.65
                END,
            definition.DisplayOrder = field.DisplayOrder,
@@ -874,6 +877,9 @@ BEGIN TRY
     VALUES
         (N'PART_NUMBER', N'P/N'),
         (N'PART_NUMBER', N'Part Number'),
+        (N'R_NUMBER', N'R No'),
+        (N'R_NUMBER', N'Registration Number'),
+        (N'R_NUMBER', N'Registration No'),
         (N'MODEL_NO', N'Model'),
         (N'MODEL_NO', N'Model Number'),
         (N'MODEL_NO', N'Product Model'),

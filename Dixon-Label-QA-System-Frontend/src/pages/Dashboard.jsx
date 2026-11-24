@@ -91,7 +91,7 @@ function Dashboard() {
             <div><span>DIXON LENS</span><h2>Live Activity Logs</h2></div>
             <span className="portal-live"><i /> LIVE</span>
           </div>
-          <div className="portal-status-body">
+          <div className={`portal-status-body ${activities.length ? 'has-activity-logs' : ''}`}>
             {activities.length === 0
               ? <><div className="portal-status-icon"><Activity size={42} strokeWidth={1.5} /></div><h3>No recent activity</h3><p>New inspection and administration events will appear here automatically.</p></>
               : <ul className="dashboard-activity-list" aria-live="polite">{activities.map((activity) => (

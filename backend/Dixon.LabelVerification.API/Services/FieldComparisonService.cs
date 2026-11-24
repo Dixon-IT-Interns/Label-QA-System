@@ -19,6 +19,9 @@ public sealed class FieldComparisonService : IFieldComparisonService
     private static readonly Regex WindowsVersion = new(
         @"\bWindows\s*(?<version>\d{1,2})(?:\s+(?<edition>Home|Pro|Enterprise|Education))?\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex QrPartNumber = new(
+        @"(?:[?&])240=(?<value>[^&\s]+)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static string CleanOcrValue(FieldDefinition definition, string value)
     {
@@ -59,7 +62,11 @@ public sealed class FieldComparisonService : IFieldComparisonService
         var cleaned = CleanOcrValue(definition, value);
         var configField = GetConfigField(definition);
         if (configField != ConfigField.None)
+        {
+            if (configField == ConfigField.QrPartNumber)
+                return NormalizeQrPartNumber(cleaned);
             return NormalizeConfigField(configField, cleaned);
+        }
 
         var productField = GetProductField(definition);
         if (productField != ProductField.None)
@@ -130,6 +137,12 @@ public sealed class FieldComparisonService : IFieldComparisonService
         var configField = GetConfigField(definition);
         if (configField != ConfigField.None)
         {
+            if (configField == ConfigField.QrPartNumber)
+            {
+                return CompareNormalized(
+                    NormalizeQrPartNumber(CleanOcrValue(definition, master)),
+                    NormalizeQrPartNumber(CleanOcrValue(definition, actual)));
+            }
             return string.Equals(
                 NormalizeConfigField(configField, CleanOcrValue(definition, master)),
                 NormalizeConfigField(configField, CleanOcrValue(definition, actual)),
@@ -224,8 +237,21 @@ public sealed class FieldComparisonService : IFieldComparisonService
         {
             "MODEL_NO" => ConfigField.ModelNo,
             "QUEUE_NO" => ConfigField.QueueNo,
+            "QR_CODE" => ConfigField.QrPartNumber,
             _ => ConfigField.None
         };
+
+    private static string? NormalizeQrPartNumber(string value)
+    {
+        var match = QrPartNumber.Match(value);
+        if (!match.Success)
+            return null;
+
+        var partNumber = Uri.UnescapeDataString(match.Groups["value"].Value).Trim();
+        return string.IsNullOrWhiteSpace(partNumber)
+            ? null
+            : partNumber.ToUpperInvariant();
+    }
 
     private static string NormalizeConfigField(ConfigField field, string value)
     {
@@ -411,6 +437,7 @@ public sealed class FieldComparisonService : IFieldComparisonService
     {
         None,
         ModelNo,
-        QueueNo
+        QueueNo,
+        QrPartNumber
     }
 }

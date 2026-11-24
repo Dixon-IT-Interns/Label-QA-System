@@ -30,7 +30,7 @@ public sealed class UsersController(
             users = users.Where(x => x.BrandId == currentUser.BrandId && x.Role == ApplicationRoles.Operator);
         return Ok(await users.OrderBy(x => x.FullName)
             .Select(x => new UserResponse(
-                x.Id, x.FullName, x.Username, x.Email, x.Role, x.BrandId,
+                x.Id, x.FullName, x.EmployeeId, x.Email, x.Role, x.BrandId,
                 x.CreatedAtUtc, x.LastLoginAtUtc))
             .ToListAsync(cancellationToken));
     }
@@ -60,11 +60,11 @@ public sealed class UsersController(
         CancellationToken cancellationToken)
     {
         var (role, brandId) = await ResolveAssignmentAsync(request.Role, request.BrandId, cancellationToken);
-        await EnsureUniqueAsync(request.Username, request.Email, null, cancellationToken);
+        await EnsureUniqueAsync(request.EmployeeId, request.Email, null, cancellationToken);
         var user = new User
         {
             FullName = request.FullName.Trim(),
-            Username = request.Username.Trim(),
+            EmployeeId = request.EmployeeId.Trim(),
             Email = request.Email.Trim(),
             Role = role,
             BrandId = brandId,
@@ -73,7 +73,7 @@ public sealed class UsersController(
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
         db.Users.Add(user);
         await db.SaveChangesAsync(cancellationToken);
-        await activityLog.RecordAsync("USER_CREATED", $"Created user {user.Username} ({user.Role}).", user.BrandId, entityId: user.Id, entityType: "User", cancellationToken: cancellationToken);
+        await activityLog.RecordAsync("USER_CREATED", $"Created user {user.EmployeeId} ({user.Role}).", user.BrandId, entityId: user.Id, entityType: "User", cancellationToken: cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = user.Id }, ToResponse(user));
     }
@@ -100,7 +100,7 @@ public sealed class UsersController(
                 currentUser.EnsureCanAccessBrand(request.BrandId.Value);
         }
 
-        await EnsureUniqueAsync(request.Username, request.Email, id, cancellationToken);
+        await EnsureUniqueAsync(request.EmployeeId, request.Email, id, cancellationToken);
         var updatedRole = request.Role ?? user.Role;
         var updatedBrandId = currentUser.IsAdmin
             ? request.BrandId ?? user.BrandId
@@ -112,14 +112,14 @@ public sealed class UsersController(
             allowUnchangedSupervisorBrand: !currentUser.IsAdmin);
 
         user.FullName = request.FullName.Trim();
-        user.Username = request.Username.Trim();
+        user.EmployeeId = request.EmployeeId.Trim();
         user.Email = request.Email.Trim();
         user.Role = assignment.Role;
         user.BrandId = assignment.BrandId;
         if (!string.IsNullOrWhiteSpace(request.Password))
             user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
         await db.SaveChangesAsync(cancellationToken);
-        await activityLog.RecordAsync("USER_UPDATED", $"Updated user {user.Username} ({user.Role}).", user.BrandId, entityId: user.Id, entityType: "User", cancellationToken: cancellationToken);
+        await activityLog.RecordAsync("USER_UPDATED", $"Updated user {user.EmployeeId} ({user.Role}).", user.BrandId, entityId: user.Id, entityType: "User", cancellationToken: cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return Ok(ToResponse(user));
     }
@@ -134,7 +134,7 @@ public sealed class UsersController(
             ?? throw new ConfigurationNotFoundException($"User '{id}' was not found.");
         db.Users.Remove(user);
         await db.SaveChangesAsync(cancellationToken);
-        await activityLog.RecordAsync("USER_DELETED", $"Deleted user {user.Username}.", user.BrandId, entityId: id, entityType: "User", cancellationToken: cancellationToken);
+        await activityLog.RecordAsync("USER_DELETED", $"Deleted user {user.EmployeeId}.", user.BrandId, entityId: id, entityType: "User", cancellationToken: cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
@@ -182,15 +182,15 @@ public sealed class UsersController(
     }
 
     private async Task EnsureUniqueAsync(
-        string username, string email, Guid? excludedId, CancellationToken cancellationToken)
+        string employeeId, string email, Guid? excludedId, CancellationToken cancellationToken)
     {
         if (await db.Users.AnyAsync(x => x.Id != excludedId
-            && (x.Username == username.Trim() || x.Email == email.Trim()), cancellationToken))
-            throw new ConfigurationConflictException("Username or email is already in use.");
+            && (x.EmployeeId == employeeId.Trim() || x.Email == email.Trim()), cancellationToken))
+            throw new ConfigurationConflictException("Employee ID or email is already in use.");
     }
 
     private static UserResponse ToResponse(User user) =>
-        new(user.Id, user.FullName, user.Username, user.Email, user.Role, user.BrandId,
+        new(user.Id, user.FullName, user.EmployeeId, user.Email, user.Role, user.BrandId,
             user.CreatedAtUtc, user.LastLoginAtUtc);
 }
 
@@ -201,7 +201,7 @@ public sealed record CreateUserRequest
     public string FullName { get; init; } = string.Empty;
 
     [Required, StringLength(100, MinimumLength = 3), RegularExpression(@"^[A-Za-z0-9._-]+$")]
-    public string Username { get; init; } = string.Empty;
+    public string EmployeeId { get; init; } = string.Empty;
 
     [Required, EmailAddress, StringLength(256)]
     public string Email { get; init; } = string.Empty;
@@ -222,7 +222,7 @@ public sealed record UpdateUserRequest
     public string FullName { get; init; } = string.Empty;
 
     [Required, StringLength(100, MinimumLength = 3), RegularExpression(@"^[A-Za-z0-9._-]+$")]
-    public string Username { get; init; } = string.Empty;
+    public string EmployeeId { get; init; } = string.Empty;
 
     [Required, EmailAddress, StringLength(256)]
     public string Email { get; init; } = string.Empty;
@@ -240,7 +240,7 @@ public sealed record UpdateUserRequest
 public sealed record UserResponse(
     Guid Id,
     string FullName,
-    string Username,
+    string EmployeeId,
     string Email,
     string Role,
     Guid? BrandId,

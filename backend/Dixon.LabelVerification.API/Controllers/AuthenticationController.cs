@@ -32,7 +32,7 @@ public sealed class AuthenticationController(
     {
         var identifier = request.Identifier.Trim();
         var user = await db.Users.SingleOrDefaultAsync(
-            x => x.Username == identifier || x.Email == identifier, cancellationToken);
+            x => x.EmployeeId == identifier || x.Email == identifier, cancellationToken);
         if (user is null || !ApplicationRoles.IsValid(user.Role)
             || !ApplicationRoles.HasValidBrandAssignment(user.Role, user.BrandId)
             || passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.Password)
@@ -41,7 +41,7 @@ public sealed class AuthenticationController(
             return Unauthorized(new ProblemDetails
             {
                 Status = StatusCodes.Status401Unauthorized,
-                Title = "The username/email or password is incorrect."
+                Title = "The employee ID/email or password is incorrect."
             });
         }
 
@@ -189,7 +189,7 @@ public sealed class AuthenticationController(
         if (!ApplicationRoles.HasValidBrandAssignment(user.Role, user.BrandId))
             return Unauthorized();
         return Ok(new AuthenticatedUserResponse(
-            user.Id, user.FullName, user.Username, user.Email, user.Role, user.BrandId));
+            user.Id, user.FullName, user.EmployeeId, user.Email, user.Role, user.BrandId));
     }
 
     private LoginResponse CreateLoginResponse(User user)
@@ -199,7 +199,7 @@ public sealed class AuthenticationController(
             token,
             expiresAtUtc,
             new AuthenticatedUserResponse(
-                user.Id, user.FullName, user.Username, user.Email, user.Role, user.BrandId));
+                user.Id, user.FullName, user.EmployeeId, user.Email, user.Role, user.BrandId));
     }
 
     private static string CreatePasswordResetToken() =>
@@ -252,6 +252,6 @@ public sealed class ResetPasswordRequest
 }
 
 public sealed record AuthenticatedUserResponse(
-    Guid Id, string FullName, string Username, string Email, string Role, Guid? BrandId);
+    Guid Id, string FullName, string EmployeeId, string Email, string Role, Guid? BrandId);
 
 public sealed record LoginResponse(string AccessToken, DateTimeOffset ExpiresAtUtc, AuthenticatedUserResponse User);

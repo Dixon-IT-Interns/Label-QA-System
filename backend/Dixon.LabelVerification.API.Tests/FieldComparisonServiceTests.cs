@@ -59,6 +59,35 @@ public sealed class FieldComparisonServiceTests
     }
 
     [Fact]
+    public void QrCodeComparisonUsesOnlyPartNumberFrom240Parameter()
+    {
+        var definition = new FieldDefinition
+        {
+            LabelProfileId = Guid.NewGuid(),
+            FieldName = "QR_CODE",
+            DisplayName = "QR Code",
+            Required = true,
+            Critical = true,
+            OcrConfidenceThreshold = 0.9,
+            ComparisonStrategy = FieldComparisonStrategy.Exact
+        };
+        var master = new FieldObservation
+        {
+            Value = "https;//hpsmart.com/QRC/I0B/01/885981339727/21/1N463504KS?240=E52PWPA%23ACJ&422=156",
+            Confidence = 0.99
+        };
+        var actual = new FieldObservation
+        {
+            Value = "https;//hpsmart.com/QRC/OTHER/21/DIFFERENT?240=E52PWPA%23ACJ&422=999",
+            Confidence = 0.99
+        };
+
+        var result = _service.Compare(definition, master, actual);
+
+        Assert.Equal(InspectionStatus.PASS, result.Status);
+    }
+
+    [Fact]
     public void IdentifierComparisonIgnoresFormattingSeparators()
     {
         var result = Compare("ABC-123", "ABC123", FieldComparisonStrategy.Identifier);

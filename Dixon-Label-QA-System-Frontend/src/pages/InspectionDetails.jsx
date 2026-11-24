@@ -16,31 +16,32 @@ import {
 } from '../services/inspectionApi.js'
 
 const imageTitles = {
-  MASTER_CO: 'Master CO',
-  ACTUAL_CO: 'Actual CO',
+  MASTER_CO: 'Master COO',
+  ACTUAL_CO: 'Actual COO',
   MASTER_CONFIG: 'Master Config',
   ACTUAL_CONFIG: 'Actual Config',
 }
 const stageTitles = {
-  CO_COMPARISON: 'CO comparison',
+  CO_COMPARISON: 'COO comparison',
   CONFIG_COMPARISON: 'Config comparison',
-  SERIAL_VALIDATION: 'CO / CONFIG validation',
+  SERIAL_VALIDATION: 'COO / CONFIG validation',
 }
 const ocrImageTitles = {
-  MASTER_CO: 'Master CO',
-  ACTUAL_CO: 'Actual CO',
+  MASTER_CO: 'Master COO',
+  ACTUAL_CO: 'Actual COO',
   MASTER_CONFIG: 'Master Config',
   ACTUAL_CONFIG: 'Actual Config',
 }
 const displayFieldName = (fieldKey) => ({
   SERIAL_NUMBER: 'S/N',
-  PART_NUMBER: 'P/N',
+  PART_NUMBER: 'SKU',
+  R_NUMBER: 'R Number',
   MODEL_NO: 'Model No.',
   QR_CODE: 'QR Code',
-  QUEUE_NO: 'Queue No.',
-  PART_NUMBER_TO_QUEUE_NO: 'P/N ↔ Queue No.',
+  QUEUE_NO: 'SKU',
+  PART_NUMBER_TO_QUEUE_NO: 'SKU',
 }[fieldKey] || fieldKey)
-const coFieldKeys = new Set(['SERIAL_NUMBER', 'PART_NUMBER', 'MODEL_NO', 'QR_CODE'])
+const coFieldKeys = new Set(['SERIAL_NUMBER', 'PART_NUMBER', 'R_NUMBER', 'MODEL_NO', 'QR_CODE'])
 
 function parseOcrEvidence(json) {
   if (!json) return { lines: [], fieldCandidates: [], barcodes: [], warnings: [] }
@@ -191,6 +192,7 @@ function InspectionDetails() {
 
   const item = details.inspection
   const canModifyInspection = ['Admin', 'Supervisor', 'Operator'].includes(user?.role)
+  const showConfidence = user?.role === 'Admin'
   const canCancel = canModifyInspection && ['READY', 'REVIEW_REQUIRED', 'BLOCKED', 'ERROR'].includes(item.status)
   const isPass = item.status === 'PASS'
   const isFail = ['FAIL', 'ERROR', 'BLOCKED'].includes(item.status)
@@ -240,21 +242,21 @@ function InspectionDetails() {
       </section>
       <section className="panel inspection-detail-summary" id="inspection-summary">
         <div><span>Overall status</span><StatusPill status={item.status} /></div>
-        <div><span>CO status</span><StatusPill status={item.coStatus} /></div>
+        <div><span>COO status</span><StatusPill status={item.coStatus} /></div>
         <div><span>Config status</span><StatusPill status={item.configStatus} /></div>
         <div><span>Serial status</span><StatusPill status={item.serialStatus} /></div>
         <div><span>Production order</span><strong>{item.productionOrderNumber || '—'}</strong></div>
         <div><span>Work order</span><strong>{item.workOrderNumber || '—'}</strong></div>
-        <div><span>CO profile version</span><strong>{details.labelProfileCOVersion ? `v${details.labelProfileCOVersion}` : '—'}</strong></div>
+        <div><span>COO profile version</span><strong>{details.labelProfileCOVersion ? `v${details.labelProfileCOVersion}` : '—'}</strong></div>
         <div><span>Config profile version</span><strong>{details.labelProfileConfigVersion ? `v${details.labelProfileConfigVersion}` : '—'}</strong></div>
       </section>
 
-      {actualCoFields.length > 0 && <section aria-label="Extracted values from actual CO label" className="panel co-extracted-summary">
-        <header className="panel-header"><div><div className="eyebrow">Actual CO label</div><h2 className="panel-title">Key extracted values</h2></div></header>
+      {actualCoFields.length > 0 && <section aria-label="Extracted values from actual COO label" className="panel co-extracted-summary">
+        <header className="panel-header"><div><div className="eyebrow">Actual COO label</div><h2 className="panel-title">Key extracted values</h2></div></header>
         <div className="co-extracted-grid">{actualCoFields.map((field) => (
           <div className="co-extracted-value" key={field.fieldKey}>
             <span>{displayFieldName(field.fieldKey)}</span>
-            <strong>{field.fieldKey === 'QR_CODE' ? (field.extractedValue ? 'Detected' : 'Not detected') : field.extractedValue || 'Unreadable'}</strong>
+            <strong>{field.fieldKey === 'QR_CODE' ? (field.extractedValue ? 'Detected' : 'Not detected') : field.normalizedValue || field.extractedValue || 'Unreadable'}</strong>
           </div>
         ))}</div>
       </section>}
@@ -292,7 +294,7 @@ function InspectionDetails() {
       </section>
 
       <section className="panel inspection-details-panel">
-        <header className="panel-header"><div><h2 className="panel-title">OCR evidence</h2><p className="panel-subtitle">Targeted field candidates, confidence, image quality, and label-specific barcode evidence.</p></div></header>
+        <header className="panel-header"><div><h2 className="panel-title">OCR extracted text</h2><p className="panel-subtitle">OCR lines and configured field values extracted from every label.</p></div></header>
         {details.ocrResults.length === 0 ? <EmptyState description="OCR evidence is saved after processing begins." icon={FileImage} title="No OCR results" />
           : <div className="ocr-evidence-list">{details.ocrResults.map((result) => {
             const evidence = parseOcrEvidence(result.extractedFieldsJson)
@@ -302,15 +304,15 @@ function InspectionDetails() {
             const extractedFields = result.extractedFields.filter((field) =>
               !isCoImage || coFieldKeys.has(field.fieldKey))
             return <article className="ocr-evidence-card" key={result.id}>
-              <header><div><h3>{ocrImageTitles[result.imageType] || result.imageType}</h3><small>{result.engine} {result.engineVersion} · {result.processingDurationMs ?? '—'} ms · Confidence {result.overallConfidence == null ? '—' : `${(result.overallConfidence * 100).toFixed(0)}%`}</small></div><StatusPill status={result.status} /></header>
+              <header><div><h3>{ocrImageTitles[result.imageType] || result.imageType}</h3><small>{result.engine} {result.engineVersion} · {result.processingDurationMs ?? '—'} ms</small></div><StatusPill status={result.status} /></header>
               {evidence ? <>
                 {evidence.imageQuality && <div className="inspection-help">Image quality: {evidence.imageQuality.width} × {evidence.imageQuality.height}px · sharpness {evidence.imageQuality.blur_score} · brightness {evidence.imageQuality.brightness_mean} · contrast {evidence.imageQuality.contrast_stddev}</div>}
-                {fieldCandidates.length > 0 && <div className="table-wrap"><table className="data-table"><thead><tr><th>Configured field</th><th>Detected value</th><th>Confidence</th><th>Candidate status</th><th>Reason</th></tr></thead><tbody>
-                  {fieldCandidates.map((candidate, index) => <tr key={`${candidate.fieldName}-${index}`}><td>{displayFieldName(candidate.fieldName)}</td><td>{candidate.value ?? 'Unreadable'}</td><td>{`${(candidate.confidence * 100).toFixed(0)}%`}</td><td>{candidate.status}</td><td>{candidate.reason || '—'}{!isCoImage && candidate.debug && <details><summary>OCR debug</summary><pre>{JSON.stringify(candidate.debug, null, 2)}</pre></details>}</td></tr>)}
+                {fieldCandidates.length > 0 && <div className="table-wrap"><table className="data-table"><thead><tr><th>Configured field</th><th>Detected value</th><th>Candidate status</th><th>Reason</th></tr></thead><tbody>
+                  {fieldCandidates.map((candidate, index) => <tr key={`${candidate.fieldName}-${index}`}><td>{displayFieldName(candidate.fieldName)}</td><td>{candidate.value ?? 'Unreadable'}</td><td>{candidate.status}</td><td>{candidate.reason || '—'}{!isCoImage && candidate.debug && <details><summary>OCR debug</summary><pre>{JSON.stringify(candidate.debug, null, 2)}</pre></details>}</td></tr>)}
                 </tbody></table></div>}
-                {extractedFields.length > 0 && <div className="table-wrap"><table className="data-table"><thead><tr><th>Saved field</th><th>Value</th><th>Confidence</th><th>Correction</th><th /></tr></thead><tbody>
+                {extractedFields.length > 0 && <div className="table-wrap"><table className="data-table"><thead><tr><th>Saved field</th><th>Value</th><th>Correction</th><th /></tr></thead><tbody>
                   {extractedFields.map((field, index) => <tr key={`${field.fieldKey}-${index}`}><td>{displayFieldName(field.fieldKey)}</td><td>{field.extractedValue ?? 'Unreadable'}</td>
-                    <td>{(field.confidence * 100).toFixed(0)}%</td><td>{field.isManuallyCorrected ? `Manual: ${field.correctionReason}` : 'OCR'}</td>
+                    <td>{field.isManuallyCorrected ? `Manual: ${field.correctionReason}` : 'OCR'}</td>
                     <td>{canModifyInspection && field.fieldDefinitionId && ['REVIEW_REQUIRED', 'FAIL'].includes(item.status) && <button className="button button-secondary" onClick={() => setCorrection({
                       imageId: result.imageId,
                       fieldDefinitionId: field.fieldDefinitionId,
@@ -321,8 +323,8 @@ function InspectionDetails() {
                 </tbody></table></div>}
                 {!isCoImage && evidence.barcodes.length > 0 && <div className="ocr-barcode-list"><strong>Barcodes</strong>{evidence.barcodes.map((barcode, index) => <div key={`${barcode.format}-${index}`}>{barcode.format}: {barcode.value}</div>)}</div>}
                 {evidence.warnings.map((warning, index) => <div className="inspection-help" key={`${warning}-${index}`}><AlertCircle size={14} />{warning}</div>)}
-                {!isCoImage && <details><summary>OCR lines ({evidence.lines.length})</summary><ul className="ocr-line-list">{evidence.lines.map((line, index) => <li key={`${line.text}-${index}`}><span>{line.text}</span><small>{(line.confidence * 100).toFixed(0)}% confidence</small></li>)}</ul></details>}
-              </> : <div className="configuration-alert" role="alert">{isCoImage ? 'CO field evidence is unavailable in the saved result.' : `Saved OCR evidence has an unrecognized format: ${result.rawExtractedText || 'No raw text saved.'}`}</div>}
+                <details open><summary>OCR lines ({evidence.lines.length})</summary><ul className="ocr-line-list">{evidence.lines.map((line, index) => <li key={`${line.text}-${index}`}><span>{line.text}</span>{showConfidence && <small>{(line.confidence * 100).toFixed(0)}% confidence</small>}</li>)}</ul></details>
+              </> : <div className="configuration-alert" role="alert">{isCoImage ? 'COO field evidence is unavailable in the saved result.' : `Saved OCR evidence has an unrecognized format: ${result.rawExtractedText || 'No raw text saved.'}`}</div>}
             </article>
           })}</div>}
       </section>
@@ -338,13 +340,13 @@ function InspectionDetails() {
               <div className="stage-counts"><span>Fields: {stage.totalFields}</span><span>Matched: {stage.matchedFields}</span><span>Mismatch: {stage.mismatchedFields}</span><span>Unreadable: {stage.unreadableFields}</span></div>
               {(stage.stageType === 'CO_COMPARISON'
                 ? stage.comparisons.filter((comparison) => coFieldKeys.has(comparison.fieldKey))
-                : stage.comparisons).length > 0 && <div className="table-wrap"><table className="data-table"><thead><tr><th>Field</th><th>{stage.stageType === 'SERIAL_VALIDATION' ? 'CO actual' : 'Master'}</th><th>{stage.stageType === 'SERIAL_VALIDATION' ? 'CONFIG actual' : 'Actual'}</th><th>Strategy</th><th>Result</th><th>Reason</th></tr></thead><tbody>
+                : stage.comparisons).length > 0 && <div className="table-wrap"><table className="data-table"><thead><tr><th>Field</th><th>{stage.stageType === 'SERIAL_VALIDATION' ? 'COO actual' : 'Master'}</th><th>{stage.stageType === 'SERIAL_VALIDATION' ? 'CONFIG actual' : 'Actual'}</th><th>Strategy</th><th>Result</th><th>Reason</th></tr></thead><tbody>
                 {(stage.stageType === 'CO_COMPARISON'
                   ? stage.comparisons.filter((comparison) => coFieldKeys.has(comparison.fieldKey))
                   : stage.comparisons).map((comparison) => <tr className={`comparison-row-${String(comparison.status).toLowerCase()}`} key={comparison.fieldKey}>
                   <td>{displayFieldName(comparison.fieldKey)}</td>
-                  <td>{comparison.masterValue ?? 'Unreadable'}{comparison.normalizedMasterValue && <small className="table-secondary">Normalized: {comparison.normalizedMasterValue}</small>}</td>
-                  <td>{comparison.actualValue ?? 'Unreadable'}{comparison.normalizedActualValue && <small className="table-secondary">Normalized: {comparison.normalizedActualValue}</small>}</td>
+                  <td>{comparison.normalizedMasterValue || comparison.masterValue || 'Unreadable'}</td>
+                  <td>{comparison.normalizedActualValue || comparison.actualValue || 'Unreadable'}</td>
                   <td>{comparison.comparisonStrategy}</td><td><StatusPill status={comparison.status} /></td><td>{comparison.mismatchReason || '—'}</td>
                 </tr>)}
               </tbody></table></div>}
