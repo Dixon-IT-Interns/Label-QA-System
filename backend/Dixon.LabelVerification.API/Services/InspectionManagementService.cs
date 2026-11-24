@@ -19,7 +19,8 @@ public sealed class InspectionManagementService(
     IWebHostEnvironment environment,
     IConfiguration configuration,
     ILogger<InspectionManagementService> logger,
-    AuthenticatedUserContext currentUser) : IInspectionManagementService
+    AuthenticatedUserContext currentUser,
+    IActivityLogService activityLog) : IInspectionManagementService
 {
     private readonly string _storageRoot = InspectionStoragePaths.ResolveRoot(configuration, environment);
 
@@ -98,6 +99,8 @@ public sealed class InspectionManagementService(
                 null, null, ipAddress);
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+            await activityLog.RecordAsync("INSPECTION_STARTED", $"Started inspection {inspection.InspectionNumber}.", inspection.BrandId, inspection.Id, entityId: inspection.ModelId, entityType: "Inspection", ipAddress: ipAddress, cancellationToken: cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
         }
         catch
         {
@@ -204,7 +207,7 @@ public sealed class InspectionManagementService(
         logger.LogInformation(
             "[UPLOAD] request started; requestId={RequestId} inspectionId={InspectionId} imageType={ImageType} timeUtc={TimeUtc}",
             requestId, inspectionId, imageType, DateTimeOffset.UtcNow);
-        var inspection = await db.InspectionSessions.AsNoTracking().Include(x => x.Images)
+        var inspection = await db.InspectionSessions.AsNoTracking().Include(x => x.Images).Include(x => x.Model)
             .SingleOrDefaultAsync(x => x.Id == inspectionId, cancellationToken);
         if (inspection is null)
         {
@@ -255,12 +258,11 @@ public sealed class InspectionManagementService(
             throw new InspectionConflictException("Images can only be uploaded before processing starts.");
         }
 
-        var extension = contentType == "image/png" ? ".png" : ".jpg";
-        var storedFileName = $"{Guid.NewGuid():N}{extension}";
-        var relativePath = Path.Combine(inspectionId.ToString("N"), storedFileName);
+        var storedFileName = imageType == InspectionImageType.ACTUAL_CO ? "ActualCO.jpg" : "ActualConfig.jpg";
+        var relativePath = InspectionStoragePaths.ActualImagePath(inspection.Model.Code, inspectionId, imageType);
         var target = GetStoragePath(relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        await using (var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
+        await using (var output = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true))
         {
             await output.WriteAsync(bytes, cancellationToken);
             await output.FlushAsync(cancellationToken);
@@ -308,6 +310,8 @@ public sealed class InspectionManagementService(
                     string.Join(",", db.ChangeTracker.Entries()
                         .Select(entry => $"{entry.Metadata.ClrType.Name}:{entry.State}")),
                     DateTimeOffset.UtcNow);
+                await db.SaveChangesAsync(cancellationToken);
+                await activityLog.RecordAsync("IMAGE_UPLOADED", $"Uploaded {imageType} image.", inspection.BrandId, inspectionId, image.Id, "InspectionImage", ipAddress, cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
                 logger.LogInformation(
                     "[UPLOAD] SaveChanges completed; requestId={RequestId} inspectionId={InspectionId} imageType={ImageType} rowVersion={RowVersion} timeUtc={TimeUtc}",
@@ -674,6 +678,8 @@ public sealed class InspectionManagementService(
         });
         await SaveProcessChangesAsync(
             "PROCESSING_STATUS_SAVE", inspectionId, InspectionStatus.PROCESSING, cancellationToken);
+        await activityLog.RecordAsync("OCR_PROCESSING_STARTED", "OCR processing started.", inspection.BrandId, inspectionId, entityType: "Inspection", ipAddress: ipAddress, cancellationToken: cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         logger.LogInformation(
             "PROCESSING_STATE_SAVE_SUCCESS inspectionId={InspectionId} status={Status} attempt={AttemptCount} rowVersion={RowVersion}",
@@ -862,6 +868,7 @@ public sealed class InspectionManagementService(
                     ProcessingDurationMs = result.ProcessingDurationMs + (barcodeResult?.ProcessingDurationMs ?? 0)
                 };
                 db.OcrResults.Add(ocrResult);
+                await activityLog.RecordAsync("OCR_RESULT", $"OCR result saved for {image.ImageType}: {ocrResult.Status}.", inspection.BrandId, inspectionId, image.Id, "InspectionImage", ipAddress, cancellationToken);
                 logger.LogInformation(
                     "IMAGE_RESULT_SAVE inspectionId={InspectionId} imageId={ImageId} imageType={ImageType} resultStatus={ResultStatus} persistence=FINAL_STATUS_SAVE",
                     inspectionId, image.Id, image.ImageType, ocrResult.Status);
@@ -973,6 +980,8 @@ public sealed class InspectionManagementService(
             await SaveProcessChangesAsync(
                 "FINAL_STATUS_SAVE", inspectionId, finalAssessment.Status, cancellationToken);
             await finalizationTransaction.CommitAsync(cancellationToken);
+            await activityLog.RecordAsync("INSPECTION_COMPLETED", $"Inspection completed with status {finalAssessment.Status}.", finalInspection.BrandId, inspectionId, entityType: "Inspection", ipAddress: ipAddress, cancellationToken: cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
             var finalRowVersion = await db.InspectionSessions.AsNoTracking()
                 .Where(x => x.Id == inspectionId)
                 .Select(x => x.RowVersion)
@@ -1222,21 +1231,8 @@ public sealed class InspectionManagementService(
         ICollection<string> copiedPaths,
         CancellationToken cancellationToken)
     {
-        var sourcePath = GetStoragePath(master.StoragePath);
-        var extension = Path.GetExtension(master.StoredFileName);
-        var storedFileName = $"{Guid.NewGuid():N}{extension}";
-        var relativePath = Path.Combine(inspection.Id.ToString("N"), storedFileName);
-        var targetPath = GetStoragePath(relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
-        copiedPaths.Add(targetPath);
-        await using (var source = new FileStream(
-                         sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true))
-        await using (var target = new FileStream(
-                         targetPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
-        {
-            await source.CopyToAsync(target, cancellationToken);
-            await target.FlushAsync(cancellationToken);
-        }
+        var storedFileName = master.StoredFileName;
+        var relativePath = master.StoragePath;
 
         var imageType = master.LabelType == LabelType.CO
             ? InspectionImageType.MASTER_CO

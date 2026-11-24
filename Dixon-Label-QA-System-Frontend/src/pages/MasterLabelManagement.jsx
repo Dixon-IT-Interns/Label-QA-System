@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import PageHeader from '../components/PageHeader.jsx'
 import useAuth from '../hooks/useAuth.js'
-import { getApiErrorMessage, getBrands, getModels } from '../services/configurationApi.js'
+import { getApiErrorMessage, getBrands, getModels, saveModel } from '../services/configurationApi.js'
 import {
   getMasterLabelImage,
   getMasterLabelsForModel,
@@ -37,6 +37,7 @@ function MasterLabelManagement() {
   const [models, setModels] = useState([])
   const [brandId, setBrandId] = useState('')
   const [modelId, setModelId] = useState('')
+  const [modelText, setModelText] = useState('')
   const [labels, setLabels] = useState([])
   const [loadedModelId, setLoadedModelId] = useState('')
   const [files, setFiles] = useState({})
@@ -118,15 +119,37 @@ function MasterLabelManagement() {
   async function saveMasterLabels() {
     const coFile = files.CO
     const configFile = files.CONFIG
-    if (!brandId || !modelId || !coFile || !configFile) {
-      setError('Select a brand and model, then choose both master-label images.')
+    if (!brandId || !modelText.trim() || !coFile || !configFile) {
+      setError('Select a brand, enter or detect a model, then choose both master-label images.')
       return
     }
     setSavingType('PAIR')
     setError('')
     setNotice('')
     try {
-      const saved = await saveMasterLabelPair(brandId, modelId, coFile, configFile)
+      let resolvedModelId = modelId
+      if (!resolvedModelId) {
+        const typedModel = modelText.trim()
+        const existingModel = brandModels.find((model) =>
+          model.code.toLowerCase() === typedModel.toLowerCase()
+          || model.name.toLowerCase() === typedModel.toLowerCase(),
+        )
+        if (existingModel) {
+          resolvedModelId = existingModel.id
+          setModelId(existingModel.id)
+        } else {
+          const created = await saveModel({
+            brandId,
+            code: typedModel,
+            name: typedModel,
+            isActive: true,
+          })
+          resolvedModelId = created.id
+          setModels((current) => [...current, created])
+          setModelId(created.id)
+        }
+      }
+      const saved = await saveMasterLabelPair(brandId, resolvedModelId, coFile, configFile)
       const savedLabels = [saved.co, saved.config]
       setLabels((current) => [
         ...current.filter((label) =>
@@ -177,6 +200,7 @@ function MasterLabelManagement() {
         ? current
         : [...current, detectedModel])
       setModelId(detected.modelId)
+      setModelText(detected.modelName || detected.modelCode)
       setNotice(detected.wasCreated
         ? `New model ${detected.modelName} was detected and created. Upload both labels to assign them to this model.`
         : `Model ${detected.modelName} was detected. Upload both labels to assign them to this model.`)
@@ -185,6 +209,22 @@ function MasterLabelManagement() {
     } finally {
       setSavingType('')
     }
+  }
+
+  function handleModelTextChange(value) {
+    setModelText(value)
+    const typedModel = value.trim().toLowerCase()
+    const existingModel = brandModels.find((model) =>
+      model.code.toLowerCase() === typedModel || model.name.toLowerCase() === typedModel,
+    )
+    setModelId(existingModel?.id ?? '')
+    setError('')
+    setNotice('')
+  }
+
+  function handleLabelFileChange(type, file) {
+    setFiles((current) => ({ ...current, [type]: file }))
+    if (file && !modelId && !modelText.trim()) void detectModelFromLabel(file)
   }
 
   return (
@@ -201,6 +241,7 @@ function MasterLabelManagement() {
             ? <select disabled={loading || savingType !== ''} onChange={(event) => {
               setBrandId(event.target.value)
               setModelId('')
+              setModelText('')
               setFiles({})
               setError('')
               setNotice('')
@@ -217,7 +258,10 @@ function MasterLabelManagement() {
               disabled={!brandId || loading || savingType !== ''}
               id="master-label-model"
               onChange={(event) => {
-                setModelId(event.target.value)
+                const nextModelId = event.target.value
+                const nextModel = brandModels.find((model) => model.id === nextModelId)
+                setModelId(nextModelId)
+                setModelText(nextModel ? (nextModel.name || nextModel.code) : '')
                 setFiles({})
                 setError('')
                 setNotice('')
@@ -229,6 +273,13 @@ function MasterLabelManagement() {
                 <option key={model.id} value={model.id}>{model.name} ({model.code})</option>
               ))}
             </select>
+            <input
+              aria-label="Editable model"
+              disabled={!brandId || loading || savingType !== ''}
+              onChange={(event) => handleModelTextChange(event.target.value)}
+              placeholder="Type model or model number"
+              value={modelText}
+            />
           </label>
           <button
             className="button button-primary master-detect-model-button"
@@ -300,7 +351,7 @@ function MasterLabelManagement() {
                       key={`${type}-${fileInputVersion}`}
                       accept="image/jpeg,image/png,.jpg,.jpeg,.png"
                       disabled={savingType !== ''}
-                      onChange={(event) => setFiles((current) => ({ ...current, [type]: event.target.files?.[0] ?? null }))}
+                      onChange={(event) => handleLabelFileChange(type, event.target.files?.[0] ?? null)}
                       type="file"
                     />
                   </label>
@@ -317,7 +368,7 @@ function MasterLabelManagement() {
           <div className="master-label-pair-actions">
             <button
               className="button button-primary master-save-button"
-              disabled={!files.CO || !files.CONFIG || !modelId || masterLoading || savingType !== ''}
+              disabled={!files.CO || !files.CONFIG || !modelText.trim() || masterLoading || savingType !== ''}
               onClick={() => void saveMasterLabels()}
               type="button"
             >

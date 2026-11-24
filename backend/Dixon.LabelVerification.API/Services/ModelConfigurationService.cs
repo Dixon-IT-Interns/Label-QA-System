@@ -9,7 +9,8 @@ namespace Dixon.LabelVerification.API.Services;
 public sealed class ModelConfigurationService(
     LabelVerificationDbContext dbContext,
     AuthenticatedUserContext currentUser,
-    ILogger<ModelConfigurationService> logger) : IModelConfigurationService
+    ILogger<ModelConfigurationService> logger,
+    IActivityLogService activityLog) : IModelConfigurationService
 {
     public async Task<IReadOnlyList<ModelResponse>> GetAllAsync(
         Guid? brandId,
@@ -60,6 +61,8 @@ public sealed class ModelConfigurationService(
         };
         dbContext.Models.Add(model);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("MODEL_CREATED", $"Created model {model.Code}.", model.BrandId, entityId: model.Id, entityType: "Model", cancellationToken: cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
         await dbContext.Entry(model).Reference(x => x.Brand).LoadAsync(cancellationToken);
         logger.LogInformation("Created model {ModelId} for brand {BrandId}", model.Id, model.BrandId);
         return ToResponse(model);
@@ -87,6 +90,8 @@ public sealed class ModelConfigurationService(
         model.Description = request.Description?.Trim();
         model.IsActive = request.IsActive;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("MODEL_UPDATED", $"Updated model {model.Code}.", model.BrandId, entityId: id, entityType: "Model", cancellationToken: cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
         await dbContext.Entry(model).Reference(x => x.Brand).LoadAsync(cancellationToken);
         logger.LogInformation("Updated model {ModelId}", id);
         return ToResponse(model);
@@ -106,6 +111,8 @@ public sealed class ModelConfigurationService(
         }
 
         dbContext.Models.Remove(model);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("MODEL_DELETED", $"Deleted model {model.Code}.", model.BrandId, entityId: id, entityType: "Model", cancellationToken: cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Deleted model {ModelId}", id);
     }

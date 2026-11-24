@@ -360,6 +360,19 @@ class OCRService:
                 left,
                 top,
             )
+            if kind == "modelno" and candidate.status != "DETECTED":
+                full_candidate, full_lines, full_text, full_version = _extract_model_number(
+                    field,
+                    image,
+                    self._provider,
+                    0,
+                    0,
+                )
+                if full_candidate.status == "DETECTED":
+                    candidate = full_candidate
+                    model_lines = full_lines
+                    model_text = full_text
+                    version = full_version
             candidate.debug["roi"] = {
                 "x": left,
                 "y": top,
@@ -1083,7 +1096,11 @@ def _extract_model_number(
         selected_confidence = min(1.0, 0.65 * avg_confidence + 0.35 * min(1.0, variant_frequency / 3))
         top_variant_count = variant_frequency
         runner_up_score = candidate_score(ranked[1][1]) if len(ranked) > 1 else 0
-        if top_variant_count >= 2 and candidate_score(selected) > runner_up_score:
+        selected_score = candidate_score(selected)
+        confidence_threshold = field.confidence_threshold or MIN_OCR_CONFIDENCE
+        has_clear_winner = selected_score > runner_up_score
+        meets_threshold = selected_score >= confidence_threshold
+        if has_clear_winner and (top_variant_count >= 2 or meets_threshold):
             selected_value = str(selected["value"])
             selected_box = max(selected["boxes"], key=lambda box: box[2][1] - box[0][1]) if selected["boxes"] else None
     for _, entry in ranked:

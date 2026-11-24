@@ -9,7 +9,8 @@ namespace Dixon.LabelVerification.API.Services;
 public sealed class BrandConfigurationService(
     LabelVerificationDbContext dbContext,
     AuthenticatedUserContext currentUser,
-    ILogger<BrandConfigurationService> logger) : IBrandConfigurationService
+    ILogger<BrandConfigurationService> logger,
+    IActivityLogService activityLog) : IBrandConfigurationService
 {
     public async Task<IReadOnlyList<BrandResponse>> GetAllAsync(CancellationToken cancellationToken)
     {
@@ -51,6 +52,8 @@ public sealed class BrandConfigurationService(
         };
         dbContext.Brands.Add(brand);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("BRAND_CREATED", $"Created brand {brand.Name}.", brand.Id, entityId: brand.Id, entityType: "Brand", cancellationToken: cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Created brand {BrandId} with code {BrandCode}", brand.Id, brand.Code);
         return ToResponse(brand);
     }
@@ -72,6 +75,8 @@ public sealed class BrandConfigurationService(
         brand.Description = request.Description?.Trim();
         brand.IsActive = request.IsActive;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("BRAND_UPDATED", $"Updated brand {brand.Name}.", brand.Id, entityId: id, entityType: "Brand", cancellationToken: cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Updated brand {BrandId}", id);
         return ToResponse(brand);
     }
@@ -91,6 +96,8 @@ public sealed class BrandConfigurationService(
         }
 
         dbContext.Brands.Remove(brand);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("BRAND_DELETED", $"Deleted brand {brand.Name}.", brand.Id, entityId: id, entityType: "Brand", cancellationToken: cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Deleted brand {BrandId}", id);
     }

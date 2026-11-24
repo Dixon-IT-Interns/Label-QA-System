@@ -9,7 +9,8 @@ namespace Dixon.LabelVerification.API.Services;
 public sealed class LabelProfileConfigurationService(
     LabelVerificationDbContext dbContext,
     AuthenticatedUserContext currentUser,
-    ILogger<LabelProfileConfigurationService> logger) : ILabelProfileConfigurationService
+    ILogger<LabelProfileConfigurationService> logger,
+    IActivityLogService activityLog) : ILabelProfileConfigurationService
 {
     public async Task<IReadOnlyList<LabelProfileResponse>> GetAllAsync(
         Guid? brandId,
@@ -82,6 +83,8 @@ public sealed class LabelProfileConfigurationService(
         };
         dbContext.LabelProfiles.Add(profile);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("CONFIG_CREATED", $"Created {profile.LabelType} label profile {profile.Code}.", profile.BrandId, entityId: profile.Id, entityType: "LabelProfile", cancellationToken: cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
         await LoadReferencesAsync(profile, cancellationToken);
         logger.LogInformation(
             "Created {LabelType} label profile {ProfileId} for brand {BrandId}",
@@ -135,6 +138,8 @@ public sealed class LabelProfileConfigurationService(
         profile.IsActive = request.IsActive;
         profile.EffectiveFromUtc = request.EffectiveFromUtc ?? profile.EffectiveFromUtc;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("CONFIG_UPDATED", $"Updated label profile {profile.Code}.", profile.BrandId, entityId: profile.Id, entityType: "LabelProfile", cancellationToken: cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
         await LoadReferencesAsync(profile, cancellationToken);
         logger.LogInformation("Updated label profile {ProfileId}", id);
         return ToResponse(profile);
@@ -154,6 +159,8 @@ public sealed class LabelProfileConfigurationService(
         }
 
         dbContext.LabelProfiles.Remove(profile);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("CONFIG_DELETED", $"Deleted label profile {profile.Code}.", profile.BrandId, entityId: id, entityType: "LabelProfile", cancellationToken: cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Deleted label profile {ProfileId}", id);
     }

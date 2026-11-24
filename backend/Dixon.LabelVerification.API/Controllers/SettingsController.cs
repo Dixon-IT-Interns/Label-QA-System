@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using Dixon.LabelVerification.API.Data;
 using Dixon.LabelVerification.API.Entities;
+using Dixon.LabelVerification.API.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,7 @@ namespace Dixon.LabelVerification.API.Controllers;
 [ApiController]
 [Route("api/settings")]
 [Authorize(Roles = ApplicationRoles.Admin)]
-public sealed class SettingsController(LabelVerificationDbContext db) : ControllerBase
+public sealed class SettingsController(LabelVerificationDbContext db, IActivityLogService activityLog) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<SystemSettingResponse>>> Get(CancellationToken cancellationToken)
@@ -41,6 +42,8 @@ public sealed class SettingsController(LabelVerificationDbContext db) : Controll
 
         setting.SettingValue = request.Value.ToString("0.####", CultureInfo.InvariantCulture);
         setting.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("SETTINGS_UPDATED", "Updated OCR minimum confidence.", cancellationToken: cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return Ok(new SystemSettingResponse(
             setting.SettingKey, setting.SettingValue, setting.Description, setting.UpdatedAtUtc));
