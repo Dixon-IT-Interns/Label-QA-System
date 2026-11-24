@@ -483,6 +483,33 @@ BEGIN TRY
         CREATE INDEX IX_InspectionReports_InspectionSessionId ON dbo.InspectionReports(InspectionSessionId);
     END;
 
+    IF OBJECT_ID(N'dbo.ActivityLogs', N'U') IS NULL
+    BEGIN
+        CREATE TABLE dbo.ActivityLogs
+        (
+            Id uniqueidentifier NOT NULL CONSTRAINT DF_ActivityLogs_Id DEFAULT NEWSEQUENTIALID(),
+            UserAccountId uniqueidentifier NULL,
+            UserName nvarchar(150) NOT NULL,
+            Role nvarchar(30) NOT NULL,
+            BrandId uniqueidentifier NULL,
+            BrandName nvarchar(200) NULL,
+            InspectionSessionId uniqueidentifier NULL,
+            EntityId uniqueidentifier NULL,
+            EntityType nvarchar(80) NULL,
+            Action nvarchar(100) NOT NULL,
+            Details nvarchar(2000) NOT NULL,
+            IPAddress nvarchar(45) NULL,
+            CreatedAtUtc datetimeoffset(7) NOT NULL CONSTRAINT DF_ActivityLogs_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
+            UpdatedAtUtc datetimeoffset(7) NULL,
+            CONSTRAINT PK_ActivityLogs PRIMARY KEY (Id),
+            CONSTRAINT FK_ActivityLogs_ApplicationUsers_UserAccountId FOREIGN KEY (UserAccountId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL,
+            CONSTRAINT FK_ActivityLogs_Brands_BrandId FOREIGN KEY (BrandId) REFERENCES dbo.Brands(Id) ON DELETE SET NULL,
+            CONSTRAINT FK_ActivityLogs_InspectionSessions_InspectionSessionId FOREIGN KEY (InspectionSessionId) REFERENCES dbo.InspectionSessions(Id) ON DELETE SET NULL
+        );
+        CREATE INDEX IX_ActivityLogs_BrandId_CreatedAtUtc ON dbo.ActivityLogs(BrandId, CreatedAtUtc);
+        CREATE INDEX IX_ActivityLogs_UserAccountId_CreatedAtUtc ON dbo.ActivityLogs(UserAccountId, CreatedAtUtc);
+    END;
+
     IF OBJECT_ID(N'dbo.SystemSettings', N'U') IS NULL
     BEGIN
         CREATE TABLE dbo.SystemSettings
@@ -632,7 +659,7 @@ BEGIN TRY
     ALTER TABLE dbo.InspectionSessions
         ADD CONSTRAINT FK_InspectionSessions_ApplicationUsers_CreatedByUserId
         FOREIGN KEY (CreatedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL;
-    ALTER TABLE dbo.MasterLabels
+    ALTER TABLE  dbo.MasterLabels
         ADD CONSTRAINT FK_MasterLabels_ApplicationUsers_UploadedByUserId
         FOREIGN KEY (UploadedByUserId) REFERENCES dbo.ApplicationUsers(Id) ON DELETE SET NULL;
 

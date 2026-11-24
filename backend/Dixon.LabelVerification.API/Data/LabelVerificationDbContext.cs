@@ -25,6 +25,7 @@ public sealed class LabelVerificationDbContext(DbContextOptions<LabelVerificatio
     public DbSet<InspectionReport> InspectionReports => Set<InspectionReport>();
     public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
     public DbSet<InspectionProcessingJob> InspectionProcessingJobs => Set<InspectionProcessingJob>();
+    public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

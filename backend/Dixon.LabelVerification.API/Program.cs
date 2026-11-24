@@ -97,6 +97,7 @@ builder.Services.AddScoped<IInspectionSessionRepository, InspectionSessionReposi
 builder.Services.AddScoped<IInspectionManagementService, InspectionManagementService>();
 builder.Services.AddScoped<IMasterLabelService, MasterLabelService>();
 builder.Services.AddScoped<IInspectionReportService, InspectionReportService>();
+builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
 builder.Services.AddScoped<IInspectionAccessService, InspectionAccessService>();
 builder.Services.AddHostedService<InspectionJobRecoveryService>();
 builder.Services.AddScoped<IBrandConfigurationService, BrandConfigurationService>();

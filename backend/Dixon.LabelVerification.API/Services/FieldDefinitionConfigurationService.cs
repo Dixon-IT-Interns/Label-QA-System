@@ -9,7 +9,8 @@ namespace Dixon.LabelVerification.API.Services;
 public sealed class FieldDefinitionConfigurationService(
     LabelVerificationDbContext dbContext,
     AuthenticatedUserContext currentUser,
-    ILogger<FieldDefinitionConfigurationService> logger) : IFieldDefinitionConfigurationService
+    ILogger<FieldDefinitionConfigurationService> logger,
+    IActivityLogService activityLog) : IFieldDefinitionConfigurationService
 {
     public async Task<IReadOnlyList<FieldDefinitionResponse>> GetAllAsync(
         Guid? labelProfileId,
@@ -103,6 +104,8 @@ public sealed class FieldDefinitionConfigurationService(
         var field = CreateEntity(profile.Id, request, key);
         dbContext.FieldDefinitions.Add(field);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("CONFIG_FIELD_CREATED", $"Created field {field.FieldName}.", profile.BrandId, entityId: field.Id, entityType: "FieldDefinition", cancellationToken: cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         logger.LogInformation(
             "Created field {FieldDefinitionId} ({FieldKey}) on label profile {LabelProfileId}",
@@ -161,6 +164,8 @@ public sealed class FieldDefinitionConfigurationService(
         dbContext.FieldAliases.RemoveRange(field.Aliases);
         field.Aliases = CreateAliases(GetAliases(request));
         await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("CONFIG_FIELD_UPDATED", $"Updated field {field.FieldName}.", field.LabelProfile.BrandId, entityId: field.Id, entityType: "FieldDefinition", cancellationToken: cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         logger.LogInformation("Updated field definition {FieldDefinitionId}", id);
         return ToResponse(field, labelType);
@@ -198,6 +203,8 @@ public sealed class FieldDefinitionConfigurationService(
         }
 
         dbContext.FieldDefinitions.Remove(field);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("CONFIG_FIELD_DELETED", $"Deleted field {field.FieldName}.", field.LabelProfile.BrandId, entityId: id, entityType: "FieldDefinition", cancellationToken: cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         logger.LogInformation("Deleted field definition {FieldDefinitionId}", id);

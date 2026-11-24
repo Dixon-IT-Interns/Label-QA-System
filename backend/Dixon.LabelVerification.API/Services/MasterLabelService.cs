@@ -19,7 +19,8 @@ public sealed class MasterLabelService(
     ILogger<MasterLabelService> logger,
     IModelConfigurationService modelConfigurationService,
     IFieldComparisonService comparisonService,
-    AuthenticatedUserContext currentUser) : IMasterLabelService
+    AuthenticatedUserContext currentUser,
+    IActivityLogService activityLog) : IMasterLabelService
 {
     private readonly string _storageRoot = InspectionStoragePaths.ResolveRoot(configuration, environment);
 
@@ -104,6 +105,8 @@ public sealed class MasterLabelService(
             co.Definitions, co.Fields, config.Definitions, config.Fields, comparisonService);
 
         var saved = await PersistMasterLabelPairAsync(model, [co, config], userId, cancellationToken);
+        await activityLog.RecordAsync("MASTER_LABEL_UPDATED", $"Updated master COO and Config labels for {model.Code}.", model.BrandId, entityId: model.Id, entityType: "MasterLabel", cancellationToken: cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
         return new MasterLabelPairResponse(saved[LabelType.CO], saved[LabelType.CONFIG]);
     }
 
@@ -178,10 +181,8 @@ public sealed class MasterLabelService(
             };
         }).ToList();
 
-        var extension = contentType == "image/png" ? ".png" : ".jpg";
-        var storedFileName = $"{Guid.NewGuid():N}{extension}";
-        var storagePath = Path.Combine(
-            "master-labels", model.Id.ToString("N"), labelType.ToString(), storedFileName);
+        var storedFileName = labelType == LabelType.CO ? "MasterCO.jpg" : "MasterConfig.jpg";
+        var storagePath = InspectionStoragePaths.MasterImagePath(model.Code, labelType);
         return new PreparedMasterLabel(
             labelType,
             profile,
@@ -264,7 +265,8 @@ public sealed class MasterLabelService(
                 }
                 else
                 {
-                    previousPaths.Add((master.StoragePath, prepared.LabelType));
+                    if (!string.Equals(master.StoragePath, prepared.StoragePath, StringComparison.OrdinalIgnoreCase))
+                        previousPaths.Add((master.StoragePath, prepared.LabelType));
                     db.MasterLabelFields.RemoveRange(master.Fields);
                     master.Fields.Clear();
                 }
@@ -471,7 +473,7 @@ public sealed class MasterLabelService(
                     field_name = "MODEL_NO",
                     display_name = "Model No.",
                     aliases = new[] { "Model", "Model Number", "Product Model" },
-                    confidence_threshold = 0.55
+                    confidence_threshold = 0.40
                 },
                 new
                 {
@@ -495,7 +497,7 @@ public sealed class MasterLabelService(
                     field_name = "MODEL_NO",
                     display_name = "Model No.",
                     aliases = new[] { "Model", "Model Number", "Product Model" },
-                    confidence_threshold = 0.55
+                    confidence_threshold = 0.40
                 },
                 new
                 {
@@ -512,7 +514,7 @@ public sealed class MasterLabelService(
         result.FieldCandidates?.FirstOrDefault(candidate =>
             string.Equals(candidate.FieldName, "MODEL_NO", StringComparison.OrdinalIgnoreCase)
             && candidate.Status == "DETECTED"
-            && candidate.Confidence >= 0.55
+            && candidate.Confidence >= 0.40
             && !string.IsNullOrWhiteSpace(candidate.Value));
 
     public async Task<MasterLabelImageContent> GetImageAsync(

@@ -8,8 +8,11 @@ import {
   ShieldCheck,
   Tags,
   UserRoundCog,
+  Activity,
 } from 'lucide-react'
 import { Link, Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { getDashboard } from '../services/adminApi.js'
 import useAuth from '../hooks/useAuth.js'
 
 const supervisorCards = [
@@ -46,10 +49,24 @@ function PortalCard({ card }) {
 
 function Dashboard() {
   const { user } = useAuth()
+  const [activities, setActivities] = useState([])
 
   if (user?.role === 'Operator') return <Navigate replace to="/inspections/new" />
   const isAdmin = user?.role === 'Admin'
   const cards = isAdmin ? adminCards : supervisorCards
+
+  useEffect(() => {
+    let active = true
+    const refresh = async () => {
+      try {
+        const data = await getDashboard()
+        if (active) setActivities(data.activities || [])
+      } catch { /* dashboard cards remain usable if the activity poll fails */ }
+    }
+    void refresh()
+    const timer = window.setInterval(refresh, 5000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [])
 
   return (
     <section className="mes-dashboard">
@@ -71,20 +88,23 @@ function Dashboard() {
 
         <aside className="portal-status-panel">
           <div className="portal-status-header">
-            <div><span>DIXON LENS</span><h2>Performance Overview</h2></div>
+            <div><span>DIXON LENS</span><h2>Live Activity Logs</h2></div>
             <span className="portal-live"><i /> LIVE</span>
           </div>
           <div className="portal-status-body">
-            <div className="portal-status-icon"><ShieldCheck size={42} strokeWidth={1.5} /></div>
-            <h3>Quality verification workspace</h3>
-            <p>{isAdmin
-              ? 'Use the modules on the left to configure master labels and OCR fields, manage models and review inspection results.'
-              : 'Use the modules on the left to manage approved master labels and models, then review OCR inspection results.'}</p>
-            <div className="portal-status-grid">
-              <div><strong>OCR</strong><span>Enabled</span></div>
-              <div><strong>QA</strong><span>Ready</span></div>
-              <div><strong>Access</strong><span>{user?.role || 'User'}</span></div>
-            </div>
+            {activities.length === 0
+              ? <><div className="portal-status-icon"><Activity size={42} strokeWidth={1.5} /></div><h3>No recent activity</h3><p>New inspection and administration events will appear here automatically.</p></>
+              : <ul className="dashboard-activity-list" aria-live="polite">{activities.map((activity) => (
+                <li key={activity.id}>
+                  <span className="dashboard-activity-mark"><Activity size={14} /></span>
+                  <span className="dashboard-activity-copy">
+                    <strong>{activity.action.replaceAll('_', ' ')}</strong>
+                    <span>{activity.userName} · {activity.role} · {activity.brandName || 'All brands'}</span>
+                    <span>{activity.details}{activity.inspectionNumber ? ` · Inspection ${activity.inspectionNumber}` : ''}</span>
+                  </span>
+                  <time dateTime={activity.createdAtUtc}>{new Date(activity.createdAtUtc).toLocaleTimeString()}</time>
+                </li>
+              ))}</ul>}
           </div>
         </aside>
       </div>

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Dixon.LabelVerification.API.Data;
 using Dixon.LabelVerification.API.Entities;
+using Dixon.LabelVerification.API.Interfaces;
 using Dixon.LabelVerification.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -15,7 +16,8 @@ namespace Dixon.LabelVerification.API.Controllers;
 public sealed class UsersController(
     LabelVerificationDbContext db,
     IPasswordHasher<User> passwordHasher,
-    AuthenticatedUserContext currentUser) : ControllerBase
+    AuthenticatedUserContext currentUser,
+    IActivityLogService activityLog) : ControllerBase
 {
     [HttpGet]
     [Authorize(Roles = ApplicationRoles.Admin + "," + ApplicationRoles.Supervisor)]
@@ -71,6 +73,8 @@ public sealed class UsersController(
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
         db.Users.Add(user);
         await db.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("USER_CREATED", $"Created user {user.Username} ({user.Role}).", user.BrandId, entityId: user.Id, entityType: "User", cancellationToken: cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = user.Id }, ToResponse(user));
     }
 
@@ -115,6 +119,8 @@ public sealed class UsersController(
         if (!string.IsNullOrWhiteSpace(request.Password))
             user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
         await db.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("USER_UPDATED", $"Updated user {user.Username} ({user.Role}).", user.BrandId, entityId: user.Id, entityType: "User", cancellationToken: cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
         return Ok(ToResponse(user));
     }
 
@@ -127,6 +133,8 @@ public sealed class UsersController(
             cancellationToken)
             ?? throw new ConfigurationNotFoundException($"User '{id}' was not found.");
         db.Users.Remove(user);
+        await db.SaveChangesAsync(cancellationToken);
+        await activityLog.RecordAsync("USER_DELETED", $"Deleted user {user.Username}.", user.BrandId, entityId: id, entityType: "User", cancellationToken: cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }

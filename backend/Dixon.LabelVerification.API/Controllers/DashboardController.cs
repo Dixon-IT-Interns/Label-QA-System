@@ -11,7 +11,7 @@ namespace Dixon.LabelVerification.API.Controllers;
 [Route("api/dashboard")]
 [Authorize]
 public sealed class DashboardController(
-    LabelVerificationDbContext db,
+        LabelVerificationDbContext db,
     AuthenticatedUserContext currentUser) : ControllerBase
 {
     [HttpGet]
@@ -36,10 +36,20 @@ public sealed class DashboardController(
         if (!currentUser.IsAdmin)
             profilesQuery = profilesQuery.Where(x => x.BrandId == currentUser.BrandId);
         var profiles = await profilesQuery.CountAsync(x => x.IsActive, cancellationToken);
+        var activities = db.ActivityLogs.AsNoTracking();
+        if (currentUser.IsSupervisor)
+            activities = activities.Where(x => x.BrandId == currentUser.BrandId);
+        else if (currentUser.IsOperator)
+            activities = activities.Where(x => x.UserAccountId == currentUser.UserId);
+        var recentActivities = await activities.OrderByDescending(x => x.CreatedAtUtc).Take(30)
+            .Select(x => new ActivityLogResponse(
+                x.Id, x.CreatedAtUtc, x.UserName, x.Role, x.Action, x.Details,
+                x.BrandName, x.InspectionSessionId, x.InspectionSession == null ? null : x.InspectionSession.InspectionNumber))
+            .ToListAsync(cancellationToken);
         return Ok(new DashboardResponse(
             total, today, passed, failed, review, profiles,
             total == 0 ? 0 : Math.Round((double)passed / total * 100, 1),
-            recent));
+            recent, recentActivities));
     }
 }
 
@@ -55,4 +65,16 @@ public sealed record DashboardResponse(
     int ReviewRequiredCount,
     int ActiveProfiles,
     double PassRatePercent,
-    IReadOnlyList<RecentInspectionResponse> RecentInspections);
+    IReadOnlyList<RecentInspectionResponse> RecentInspections,
+    IReadOnlyList<ActivityLogResponse> Activities);
+
+public sealed record ActivityLogResponse(
+    Guid Id,
+    DateTimeOffset CreatedAtUtc,
+    string UserName,
+    string Role,
+    string Action,
+    string Details,
+    string? BrandName,
+    Guid? InspectionId,
+    string? InspectionNumber);
